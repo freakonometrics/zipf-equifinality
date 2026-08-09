@@ -1,0 +1,149 @@
+[
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "Beyond Zipf’s Law",
+    "section": "",
+    "text": "This page is the computational companion to Beyond Zipf’s Law: Equifinality and Mechanistic Inference from Scaling Laws. It contains the generative constructions, calibration rules, held-out simulations and robustness checks used in the paper. No empirical whale or birdsong data are analysed here.\nThe central benchmark is deliberately controlled: an i.i.d. finite-Zipf process, a persistent Markov chain and canonical sample-space reduction (SSR) share the same stationary marginal,\n\\[\np_j=\\frac{1}{jH_V},\\qquad H_V=\\sum_{k=1}^{V}\\frac1k,\n\\]\nbut encode different sequence dynamics. A latent-scale mixture provides a separate construction in which pooling creates a Zipf-like marginal from non-Zipf conditional distributions.\nShow R code\nparse_integer_vector &lt;- function(x) {\n  as.integer(trimws(strsplit(as.character(x), \",\", fixed = TRUE)[[1L]]))\n}\nparse_numeric_vector &lt;- function(x) {\n  as.numeric(trimws(strsplit(as.character(x), \",\", fixed = TRUE)[[1L]]))\n}\n\nanalysis_mode &lt;- match.arg(\n  as.character(params$analysis_mode),\n  c(\"precomputed\", \"results\", \"recompute\")\n)\nlive &lt;- analysis_mode != \"precomputed\"\n\nnmi_top_k_values &lt;- parse_integer_vector(params$nmi_top_k_values)\nrho_values &lt;- parse_numeric_vector(params$rho_values)\nr_min_values &lt;- parse_integer_vector(params$r_min_values)\nV &lt;- as.integer(params$vocabulary_size)\nL &lt;- as.integer(params$block_size)\n\nif (live) {\n  required &lt;- c(\"ggplot2\", \"patchwork\", \"knitr\")\n  missing &lt;- required[!vapply(required, requireNamespace, logical(1), quietly = TRUE)]\n  if (length(missing)) {\n    stop(\"Install required packages first: \", paste(missing, collapse = \", \"))\n  }\n\n  source(\"R/generators.R\")\n  source(\"R/diagnostics.R\")\n  source(\"R/calibration.R\")\n  source(\"R/figures.R\")\n  source(\"R/run_all.R\")\n\n  dir.create(\"figures\", showWarnings = FALSE, recursive = TRUE)\n  dir.create(\"results\", showWarnings = FALSE, recursive = TRUE)\n  dir.create(\"tables\", showWarnings = FALSE, recursive = TRUE)\n  set.seed(20260809)\n\n  if (analysis_mode == \"recompute\") {\n    if (isTRUE(params$quick)) {\n      run_all(\n        n_rep = 8L,\n        n_cal_seeds = 3L,\n        n_latent_cal_seeds = 8L,\n        n_surrogates = 3L,\n        n_boot = 250L,\n        nmi_top_k_values = nmi_top_k_values,\n        rho_values = unique(c(0, 0.35, 0.65)),\n        r_min_values = unique(c(1L, 10L, 50L)),\n        n_tokens = as.integer(params$n_tokens),\n        vocabulary_size = V,\n        block_size = L\n      )\n    } else {\n      run_all(\n        n_rep = as.integer(params$n_rep),\n        n_cal_seeds = as.integer(params$n_cal_seeds),\n        n_latent_cal_seeds = as.integer(params$n_latent_cal_seeds),\n        n_surrogates = as.integer(params$n_surrogates),\n        n_boot = as.integer(params$n_boot),\n        nmi_top_k_values = nmi_top_k_values,\n        rho_values = rho_values,\n        r_min_values = r_min_values,\n        n_tokens = as.integer(params$n_tokens),\n        vocabulary_size = V,\n        block_size = L\n      )\n    }\n  }\n\n  needed &lt;- .paper_outputs(\"results\")\n  missing_results &lt;- needed[!file.exists(needed)]\n  if (length(missing_results)) {\n    stop(\n      \"Missing simulation outputs: \", paste(missing_results, collapse = \", \"),\n      \". Use analysis_mode: recompute, or restore the results/ directory.\"\n    )\n  }\n}\n\nprecomputed &lt;- function(name) {\n  utils::read.csv(file.path(\"tables\", \"precomputed\", name), check.names = FALSE)\n}\n\nshow_table &lt;- function(x, caption = NULL, digits = 3L) {\n  knitr::kable(x, format = \"html\", digits = digits, caption = caption)\n}"
+  },
+  {
+    "objectID": "index.html#finite-i.i.d.-zipf-reference",
+    "href": "index.html#finite-i.i.d.-zipf-reference",
+    "title": "Beyond Zipf’s Law",
+    "section": "2.1 Finite i.i.d. Zipf reference",
+    "text": "2.1 Finite i.i.d. Zipf reference\nTokens are sampled independently from\n\\[\np(r;1,V)=\\frac{r^{-1}}{\\sum_{j=1}^{V}j^{-1}},\\qquad V=5000.\n\\]\nThis process supplies a finite-Zipf reference. It is not used as a dynamical explanation."
+  },
+  {
+    "objectID": "index.html#sticky-markov-control",
+    "href": "index.html#sticky-markov-control",
+    "title": "Beyond Zipf’s Law",
+    "section": "2.2 Sticky Markov control",
+    "text": "2.2 Sticky Markov control\nWithin blocks of length \\(L=250\\), the transition kernel is\n\\[\nP_{ij}=\\rho\\mathbf 1\\{i=j\\}+(1-\\rho)p_j,\n\\qquad \\rho=0.35.\n\\]\nThe chain is stationary under \\(p\\) because\n\\[\n\\sum_i p_iP_{ij}=\\rho p_j+(1-\\rho)p_j\\sum_i p_i=p_j.\n\\]\nIt is also reversible: for \\(i\\neq j\\), \\(p_iP_{ij}=p_jP_{ji}=(1-\\rho)p_ip_j\\). The control therefore contains serial dependence without a population preference for transitions toward more or less frequent ranks."
+  },
+  {
+    "objectID": "index.html#canonical-sample-space-reduction",
+    "href": "index.html#canonical-sample-space-reduction",
+    "title": "Beyond Zipf’s Law",
+    "section": "2.3 Canonical sample-space reduction",
+    "text": "2.3 Canonical sample-space reduction\nFor \\(i&gt;1\\), SSR moves uniformly to one of the lower states; after reaching state 1 it restarts uniformly over the full state space:\n\\[\nP_{ij}=\\frac{1}{i-1}\\mathbf 1\\{j&lt;i\\},\\qquad\nP_{1j}=\\frac1V.\n\\]\nThe stationary distribution is again finite Zipf. If \\(\\pi_j=(jH_V)^{-1}\\),\n\\[\n\\begin{aligned}\n(\\pi P)_j\n&=\\frac{\\pi_1}{V}+\\sum_{i=j+1}^{V}\\frac{\\pi_i}{i-1}\\\\\n&=\\frac1{H_V}\\left[\\frac1V+\\sum_{i=j+1}^{V}\\frac1{i(i-1)}\\right]\\\\\n&=\\frac1{jH_V}.\n\\end{aligned}\n\\]\nSSR is therefore not calibrated to the exponent. The observed chain starts from stationarity; natural cycles between restarts define the primary sequence boundaries (Corominas-Murtra et al. 2015; Thurner et al. 2015)."
+  },
+  {
+    "objectID": "index.html#latent-scale-mixture",
+    "href": "index.html#latent-scale-mixture",
+    "title": "Beyond Zipf’s Law",
+    "section": "2.4 Latent-scale mixture",
+    "text": "2.4 Latent-scale mixture\nEach realization contains 400 sequences of length 250. A scale \\(S_s\\) is sampled once per sequence from a log-uniform distribution on \\([0.5,8500]\\). Conditional on \\(S_s=s\\), ranks follow a truncated discrete-exponential law,\n\\[\nP(R\\le r\\mid S_s=s)\n=\\frac{1-\\exp(-r/s)}{1-\\exp(-V/s)},\n\\qquad r=1,\\ldots,V.\n\\]\nThe conditional laws are not Zipf. Pooling across scales creates the approximately Zipfian marginal (Schwab et al. 2014; Aitchison et al. 2016). The scale range is the only primary parameter chosen numerically to target the fitted exponent.\n\n\nShow R code\nif (live) {\n  cal_exp &lt;- readRDS(\"results/calibration_exponent.rds\")\n  strict_parameters &lt;- strict_benchmark_parameters(\n    exponent_parameters = cal_exp$selected,\n    n_tokens = as.integer(params$n_tokens),\n    maxent_vocabulary_size = V,\n    markov_vocabulary_size = V,\n    markov_persistence = 0.35\n  )\n  strict_parameters$maxent$block_size &lt;- L\n  strict_parameters$markov$block_size &lt;- L\n  strict_parameters$ssr$vocabulary_size &lt;- V\n  strict_parameters$ssr$initial_distribution &lt;- \"stationary\"\n\n  latent_par &lt;- strict_parameters$latent\n  parameter_display &lt;- data.frame(\n    Construction = c(\n      \"finite Zipf reference\", \"Zipf Markov control\",\n      \"sample-space reduction\", \"latent mixture\"\n    ),\n    Status = c(\"fixed\", \"fixed\", \"fixed\", \"calibrated\"),\n    Parameters = c(\n      paste0(\"V=\", V, \"; alpha=1; block length=\", L),\n      paste0(\"V=\", V, \"; alpha=1; rho=0.35; block length=\", L),\n      paste0(\"V=\", V, \"; stationary start; uniform restart\"),\n      paste0(\n        latent_par$n_sequences, \" sequences x \", latent_par$sequence_length,\n        \"; V=\", latent_par$vocabulary_size,\n        \"; scale=[\", signif(latent_par$scale_min, 5), \", \",\n        signif(latent_par$scale_max, 5), \"]\"\n      )\n    )\n  )\n} else {\n  parameter_display &lt;- precomputed(\"primary_parameters.csv\")\n}\nshow_table(parameter_display, \"Primary benchmark parameters.\")\n\n\n\nPrimary benchmark parameters.\n\n\nConstruction\nStatus\nParameters\n\n\n\n\nfinite Zipf reference\nfixed\nV=5000; alpha=1; block length=250\n\n\nZipf Markov control\nfixed\nV=5000; alpha=1; rho=0.35; block length=250\n\n\nsample-space reduction\nfixed\nV=5000; stationary start; uniform restart\n\n\nlatent mixture\ncalibrated\n400 sequences x 250; V=5000; scale log-uniform on [0.5, 8500]"
+  },
+  {
+    "objectID": "index.html#same-population-marginal-similar-rank-curves",
+    "href": "index.html#same-population-marginal-similar-rank-curves",
+    "title": "Beyond Zipf’s Law",
+    "section": "4.1 Same population marginal, similar rank curves",
+    "text": "4.1 Same population marginal, similar rank curves\nThe i.i.d. reference and SSR remain nearly indistinguishable under the fitted exponent, while the latent mixture overlaps them despite being generated through aggregation. The Markov control has the same stationary marginal but a shifted finite-sample exponent distribution.\n\n\nShow R code\nif (live) {\n  p_rank &lt;- plot_rank_frequency(sims_strict)\n  print(p_rank)\n} else {\n  knitr::include_graphics(\"figures/precomputed/fig_rank_frequency_v060.png\")\n}\n\n\n\n\n\n\n\n\nFigure 1: Held-out rank–frequency curves from three processes with the same finite-Zipf stationary marginal and a latent mixture with a similar pooled marginal.\n\n\n\n\n\n\n\nShow R code\nif (live) {\n  p_estimators &lt;- plot_alpha_estimator_comparison(rep_strict)\n  print(p_estimators)\n} else {\n  knitr::include_graphics(\"figures/precomputed/fig_alpha_estimator_robustness_v060.png\")\n}\n\n\n\n\n\n\n\n\nFigure 2: Held-out exponent estimates under the OLS rank summary and the restricted-domain likelihood estimator.\n\n\n\n\n\n\n\nShow R code\nif (live) {\n  strict_summary &lt;- diagnostic_summary_table(rep_strict)\n  get_diag &lt;- function(g, v, field = \"mean\") {\n    x &lt;- strict_summary[\n      strict_summary$generator == g & strict_summary$diagnostic == v,\n      field\n    ]\n    if (!length(x)) NA_real_ else x[1L]\n  }\n  get_sd &lt;- function(g, v) get_diag(g, v, \"sd\")\n  fmt &lt;- function(m, s, digits = 3L) {\n    sprintf(paste0(\"%.\", digits, \"f (%.\", digits, \"f)\"), m, s)\n  }\n  gs &lt;- c(\n    \"finite Zipf reference\", \"Zipf Markov control\",\n    \"sample-space reduction\", \"latent mixture\"\n  )\n  heldout_display &lt;- data.frame(\n    Construction = gs,\n    `OLS alpha` = vapply(gs, function(g) fmt(get_diag(g, \"alpha\"), get_sd(g, \"alpha\")), character(1)),\n    `MLE alpha` = vapply(gs, function(g) fmt(get_diag(g, \"alpha_mle\"), get_sd(g, \"alpha_mle\")), character(1)),\n    `Final V` = vapply(gs, function(g) fmt(get_diag(g, \"vocabulary\"), get_sd(g, \"vocabulary\"), 1L), character(1)),\n    `Excess NMI` = vapply(gs, function(g) fmt(get_diag(g, \"transition_nmi_excess\"), get_sd(g, \"transition_nmi_excess\")), character(1)),\n    `Direction D` = vapply(gs, function(g) fmt(get_diag(g, \"transition_toward_more_frequent\"), get_sd(g, \"transition_toward_more_frequent\")), character(1)),\n    check.names = FALSE\n  )\n} else {\n  heldout_display &lt;- precomputed(\"heldout_summary.csv\")\n}\nshow_table(\n  heldout_display,\n  \"Held-out diagnostics: mean (standard deviation) over 100 independent replications.\"\n)\n\n\n\nHeld-out diagnostics: mean (standard deviation) over 100 independent replications.\n\n\nConstruction\nOLS alpha\nMLE alpha\nFinal V\nExcess NMI\nDirection D\n\n\n\n\nfinite Zipf reference\n0.992 (0.005)\n0.995 (0.004)\n4857.8 (12.1)\n0.000 (0.000)\n0.500 (0.001)\n\n\nZipf Markov control\n0.984 (0.007)\n0.989 (0.005)\n4601.0 (16.2)\n0.188 (0.002)\n0.500 (0.001)\n\n\nsample-space reduction\n0.993 (0.005)\n0.995 (0.004)\n4855.6 (12.6)\n0.350 (0.001)\n0.946 (0.001)\n\n\nlatent mixture\n0.994 (0.031)\n1.004 (0.029)\n4755.4 (59.9)\n0.000 (0.001)\n0.500 (0.001)"
+  },
+  {
+    "objectID": "index.html#upper-rank-cutoff",
+    "href": "index.html#upper-rank-cutoff",
+    "title": "Beyond Zipf’s Law",
+    "section": "8.1 Upper-rank cutoff",
+    "text": "8.1 Upper-rank cutoff\nRandom segmentation and Simon reinforcement are kept outside the primary exact-marginal comparison. Their role is to show how the fitted exponent can depend on the observation window (Simon 1955; Li 1992; Conrad and Mitzenmacher 2004; Ferrer-i-Cancho and Elvevåg 2010). Generator parameters are fixed while the requested upper rank varies over\n\\[\nr_{\\max}\\in\\{300,500,1000,2000,3000\\}.\n\\]\nRandom segmentation passes through a near-one OLS exponent at the primary window and moves far from one at other cutoffs; Simon reinforcement remains closer to one over the same range.\n\n\nShow R code\nif (live) {\n  strict_sens &lt;- utils::read.csv(\"results/alpha_sensitivity_strict_replications.csv\", stringsAsFactors = FALSE)\n  mimic_sens &lt;- utils::read.csv(\"results/alpha_sensitivity_mimicking_replications.csv\", stringsAsFactors = FALSE)\n  p_rmax &lt;- plot_alpha_sensitivity(rbind(strict_sens, mimic_sens), primary_r_max = 500L)\n  print(p_rmax)\n} else {\n  knitr::include_graphics(\"figures/precomputed/fig_alpha_rmax_sensitivity_v060.png\")\n}\n\n\n\n\n\n\n\n\nFigure 7: Sensitivity of the fitted OLS exponent to the requested upper-rank cutoff. Open points mark fits truncated earlier by the minimum-count rule."
+  },
+  {
+    "objectID": "index.html#lower-rank-cutoff",
+    "href": "index.html#lower-rank-cutoff",
+    "title": "Beyond Zipf’s Law",
+    "section": "8.2 Lower-rank cutoff",
+    "text": "8.2 Lower-rank cutoff\nThe lower cutoff varies over\n\\[\nr_{\\min}\\in\\{1,5,10,20,50,100\\},\n\\]\nwith \\(r_{\\max}=500\\) and the count threshold unchanged. The most visible sensitivity occurs for the latent mixture: its mean restricted-domain estimate declines from 1.048 at \\(r_{\\min}=1\\) to 1.004 at \\(r_{\\min}=10\\) and 0.998 at \\(r_{\\min}=20\\), reflecting curvature in the head of the pooled distribution.\n\n\nShow R code\nif (live) {\n  key &lt;- interaction(rmin_sens$generator, rmin_sens$r_min, drop = TRUE)\n  rmin_summary &lt;- do.call(rbind, lapply(split(seq_len(nrow(rmin_sens)), key), function(idx) {\n    d &lt;- rmin_sens[idx, , drop = FALSE]\n    data.frame(\n      generator = d$generator[1L],\n      r_min = d$r_min[1L],\n      alpha = mean(d$alpha, na.rm = TRUE),\n      alpha_mle = mean(d$alpha_mle, na.rm = TRUE)\n    )\n  }))\n  rmin_long &lt;- rbind(\n    data.frame(generator = rmin_summary$generator, r_min = rmin_summary$r_min, alpha = rmin_summary$alpha, estimator = \"OLS log-log\"),\n    data.frame(generator = rmin_summary$generator, r_min = rmin_summary$r_min, alpha = rmin_summary$alpha_mle, estimator = \"restricted-domain MLE\")\n  )\n  p_rmin &lt;- ggplot2::ggplot(\n    rmin_long,\n    ggplot2::aes(x = r_min, y = alpha, linetype = generator, shape = generator)\n  ) +\n    ggplot2::geom_line(linewidth = 0.75) +\n    ggplot2::geom_point(size = 1.8) +\n    ggplot2::geom_hline(yintercept = 1, linetype = 3) +\n    ggplot2::facet_wrap(~ estimator, ncol = 1, scales = \"free_y\") +\n    ggplot2::scale_x_log10(breaks = sort(unique(rmin_long$r_min))) +\n    ggplot2::labs(x = expression(r[min]), y = expression(mean(hat(alpha))), linetype = NULL, shape = NULL) +\n    ggplot2::theme_minimal(base_size = 11) +\n    ggplot2::theme(legend.position = \"bottom\")\n  print(p_rmin)\n} else {\n  knitr::include_graphics(\"figures/precomputed/fig_alpha_rmin_sensitivity_v060.png\")\n}\n\n\n\n\n\n\n\n\nFigure 8: Sensitivity of OLS and restricted-domain exponent estimates to the lower-rank cutoff."
+  },
+  {
+    "objectID": "index.html#alphabet-collapse",
+    "href": "index.html#alphabet-collapse",
+    "title": "Beyond Zipf’s Law",
+    "section": "9.1 Alphabet collapse",
+    "text": "9.1 Alphabet collapse\nThe excess-NMI calculation is repeated for \\(K\\in\\{25,50,100\\}\\). The ordering is stable over these choices: i.i.d. and latent mixture remain near zero, Markov lies around 0.18–0.20, and SSR remains higher at roughly 0.32–0.38.\n\n\nShow R code\nif (live) {\n  p_nmi &lt;- plot_nmi_sensitivity(nmi_topk)\n  print(p_nmi)\n} else {\n  knitr::include_graphics(\"figures/precomputed/fig_nmi_topk_sensitivity_v060.png\")\n}\n\n\n\n\n\n\n\n\nFigure 9: Excess lag-1 NMI under three alphabet-collapse choices."
+  },
+  {
+    "objectID": "index.html#ssr-sequence-boundaries",
+    "href": "index.html#ssr-sequence-boundaries",
+    "title": "Beyond Zipf’s Law",
+    "section": "9.2 SSR sequence boundaries",
+    "text": "9.2 SSR sequence boundaries\nThe primary SSR analysis excludes restart transitions because sequence_id marks natural cycles. To assess the dependence on this choice, the same realizations are relabelled into fixed blocks of 250 tokens. Excess NMI changes only slightly, from 0.350 to 0.358 on average. Direction falls from 0.946 to 0.842 because restart transitions can now occur inside an observational block. The qualitative asymmetry remains under both boundary definitions.\n\n\nShow R code\nif (live) {\n  ssr_long &lt;- rbind(\n    data.frame(statistic = \"Excess NMI\", boundary = \"natural cycles\", value = ssr_boundary$transition_nmi_excess_natural),\n    data.frame(statistic = \"Excess NMI\", boundary = \"fixed blocks\", value = ssr_boundary$transition_nmi_excess_fixed),\n    data.frame(statistic = \"Direction D\", boundary = \"natural cycles\", value = ssr_boundary$D_natural),\n    data.frame(statistic = \"Direction D\", boundary = \"fixed blocks\", value = ssr_boundary$D_fixed)\n  )\n  p_ssr &lt;- ggplot2::ggplot(ssr_long, ggplot2::aes(x = boundary, y = value)) +\n    ggplot2::geom_boxplot(outlier.shape = NA) +\n    ggplot2::facet_wrap(~ statistic, scales = \"free_y\") +\n    ggplot2::labs(x = NULL, y = NULL) +\n    ggplot2::theme_minimal(base_size = 11)\n  print(p_ssr)\n} else {\n  knitr::include_graphics(\"figures/precomputed/fig_ssr_boundary_sensitivity_v060.png\")\n}\n\n\n\n\n\n\n\n\nFigure 10: SSR diagnostics under natural cycles and fixed 250-token blocks."
+  },
+  {
+    "objectID": "V051_NOTES.html",
+    "href": "V051_NOTES.html",
+    "title": "",
+    "section": "",
+    "text": "Code"
+  },
+  {
+    "objectID": "V051_NOTES.html#prespecified-numerical-change",
+    "href": "V051_NOTES.html#prespecified-numerical-change",
+    "title": "",
+    "section": "Prespecified numerical change",
+    "text": "Prespecified numerical change\nThe latent-mixture calibration was the only part of v0.5 showing a systematic difference between a 10-seed calibration average and the 100-seed held-out average. v0.5.1 therefore stabilizes latent calibration without touching the held-out panel:\n\nbroad latent grid screened on a small calibration subset;\ntop regions locally refined;\nfinal parameter selected on 50 calibration seeds (1001:1050 by default);\nheld-out evaluation remains seeds 2001:2100.\n\nThe same strategy is used for exponent-only and joint (alpha, V_n) latent calibration."
+  },
+  {
+    "objectID": "V051_NOTES.html#no-changes-to-the-scientific-diagnostics",
+    "href": "V051_NOTES.html#no-changes-to-the-scientific-diagnostics",
+    "title": "",
+    "section": "No changes to the scientific diagnostics",
+    "text": "No changes to the scientific diagnostics\nThe Markov control, OLS/MLE comparison, bootstrap AUC, joint-matching benchmark, and NMI sensitivity remain as in v0.5. The goal is calibration stability, not post-hoc retuning of the benchmark."
+  },
+  {
+    "objectID": "V051_NOTES.html#reproducibility",
+    "href": "V051_NOTES.html#reproducibility",
+    "title": "",
+    "section": "Reproducibility",
+    "text": "Reproducibility\nindex.qmd is now rerun-safe: on a fresh repository it generates simulations, tables and figures; on later renders it detects existing paper outputs and skips simulation unless force_rerun: true is set."
+  },
+  {
+    "objectID": "SIMULATION_PROTOCOL.html",
+    "href": "SIMULATION_PROTOCOL.html",
+    "title": "",
+    "section": "",
+    "text": "Code"
+  },
+  {
+    "objectID": "SIMULATION_PROTOCOL.html#fixed-primary-design",
+    "href": "SIMULATION_PROTOCOL.html#fixed-primary-design",
+    "title": "",
+    "section": "Fixed primary design",
+    "text": "Fixed primary design\n\nCorpus size: n = 100000 tokens.\nCommon finite support for i.i.d. Zipf, Markov and SSR: V = 5000.\nPrimary rank window: ranks 10–500, with empirical count at least 5.\nHeld-out paper replications: 100, beginning at seed 2001.\nWithin-sequence shuffle surrogates for excess NMI: 20 per replication.\nPrimary collapsed alphabet: top 50 frequent types + OTHER.\nNMI sensitivity: top 25, 50 and 100 types + OTHER.\nBootstrap rank-effect replicates: 2000.\nMarkov persistence in the primary benchmark: rho = 0.35.\nCommon i.i.d./Markov block length: 250."
+  },
+  {
+    "objectID": "SIMULATION_PROTOCOL.html#exact-marginal-primary-controls",
+    "href": "SIMULATION_PROTOCOL.html#exact-marginal-primary-controls",
+    "title": "",
+    "section": "Exact-marginal primary controls",
+    "text": "Exact-marginal primary controls\n\nFinite i.i.d. Zipf: p_j = 1/(j H_V).\nSticky Markov Zipf: P_ij = rho 1{i=j} + (1-rho) p_j; the same p is exactly stationary and the chain is reversible.\nCanonical SSR: from i &gt; 1, move uniformly to {1,...,i-1}; after state 1 restart uniformly on {1,...,V}. Its exact stationary distribution is pi_j = 1/(j H_V). The observed chain is initialized in stationarity.\nLatent mixture: conditionally non-Zipfian sequence distributions pooled over a calibrated distribution of latent scales.\n\nSSR is not calibrated to the fitted exponent in v0.6."
+  },
+  {
+    "objectID": "SIMULATION_PROTOCOL.html#calibration-evaluation-separation",
+    "href": "SIMULATION_PROTOCOL.html#calibration-evaluation-separation",
+    "title": "",
+    "section": "Calibration / evaluation separation",
+    "text": "Calibration / evaluation separation\nRandom segmentation and Simon reinforcement use calibration seeds beginning at 1001. The latent mixture uses a 50-seed final calibration panel, 1001:1050 by default, after a smaller prespecified screening panel.\nNo held-out seed beginning at 2001 is used to select calibration parameters. The exact i.i.d., Markov and SSR controls require no exponent calibration."
+  },
+  {
+    "objectID": "SIMULATION_PROTOCOL.html#primary-diagnostics",
+    "href": "SIMULATION_PROTOCOL.html#primary-diagnostics",
+    "title": "",
+    "section": "Primary diagnostics",
+    "text": "Primary diagnostics\n\nOLS Zipf exponent;\nrestricted-domain MLE on the same empirical rank window;\nfinal realized vocabulary size;\nglobal and early/late Heaps slopes;\nexcess lag-1 normalized mutual information;\ntransition direction P(next rank is more frequent | rank changes)."
+  },
+  {
+    "objectID": "SIMULATION_PROTOCOL.html#review-driven-robustness-checks",
+    "href": "SIMULATION_PROTOCOL.html#review-driven-robustness-checks",
+    "title": "",
+    "section": "Review-driven robustness checks",
+    "text": "Review-driven robustness checks\n\nr_max sensitivity: 300, 500, 1000, 2000, 3000;\nr_min sensitivity: 1, 5, 10, 20, 50, 100;\nMarkov persistence: 0, .10, .20, .35, .50, .65, .80;\neffective-information comparison to i.i.d. samples of size N_eff(rho);\nexact expected realized vocabulary under the implemented Markov block design;\nSSR sequence diagnostics under natural cycles and common fixed blocks;\nNMI alphabet collapse at K = 25, 50, 100;\nlatent-scale conditioning;\nrandom segmentation and Simon reinforcement under changing observation windows."
+  },
+  {
+    "objectID": "SIMULATION_PROTOCOL.html#interpretation",
+    "href": "SIMULATION_PROTOCOL.html#interpretation",
+    "title": "",
+    "section": "Interpretation",
+    "text": "Interpretation\nThe benchmark is a model-discrimination exercise under specified observation designs. I_excess detects order dependence relative to the shuffle null; it is not SSR-specific. High within-cycle D is a prespecified positive control for canonical SSR contraction, not a unique mechanistic signature in arbitrary data."
+  }
+]
