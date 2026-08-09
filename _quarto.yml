@@ -1,0 +1,24 @@
+project:
+  type: website
+  output-dir: docs
+
+website:
+  title: "Beyond Zipf's Law"
+  site-url: "https://freakonometrics.github.io/zipf-equifinality/"
+  page-navigation: true
+  navbar:
+    left:
+      - href: index.qmd
+        text: Reproducibility companion
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    code-tools: true
+    smooth-scroll: true
+
+execute:
+  freeze: false

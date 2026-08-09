@@ -1,0 +1,2 @@
+rho,block_size,tau,n_eff,expected_V_iid,expected_V_markov
+0.35,250,2.07,48302.28,4854.88,4598.88

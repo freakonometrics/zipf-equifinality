@@ -1,19 +1,14 @@
-# Calibration and replication protocol, v0.5.
+# Calibration and replication protocol, v0.6.
 #
-# v0.5 adds a non-SSR Markov control with an exact finite-Zipf stationary
-# marginal, and a strict joint-matching experiment that targets both the OLS
-# Zipf exponent and observed final vocabulary size.
+# v0.6 makes the primary strict benchmark analytically transparent: the finite
+# i.i.d. Zipf reference, sticky Markov control and canonical SSR all use V=5000
+# and exponent 1, hence share the same theoretical stationary marginal. SSR is
+# no longer calibrated to the fitted exponent. Calibration is reserved for the
+# latent-mixture construction and for the random-segmentation / Simon
+# compatibility examples.
 #
-# Design A ("exponent") aggressively targets the marginal Zipf exponent only.
-# It uses a broad mechanism-specific grid followed by a local refinement around
-# the best coarse candidate. Vocabulary size and all structural diagnostics are
-# held out.
-#
-# Design B ("joint") targets alpha and final vocabulary size jointly.
-#
-# The goal is not to force every mechanism to pass every design. Failure to
-# enter the target tolerance under an enriched observation map is itself an
-# identifying restriction.
+# The older joint (alpha, V_n) calibration helpers are retained for optional
+# legacy robustness work, but are no longer part of the primary v0.6 pipeline.
 
 benchmark_fallbacks <- function(mode = c("exponent", "joint"), n_tokens = 100000L) {
   mode <- match.arg(mode)
@@ -35,7 +30,7 @@ benchmark_fallbacks <- function(mode = c("exponent", "joint"), n_tokens = 100000
         n_sequences = 400L, sequence_length = as.integer(n_tokens / 400L),
         vocabulary_size = 5000L, scale_min = 1, scale_max = 8000
       ),
-      ssr = list(n_tokens = n_tokens, vocabulary_size = 20000L)
+      ssr = list(n_tokens = n_tokens, vocabulary_size = 5000L, initial_distribution = "stationary")
     )
   } else {
     list(
@@ -706,7 +701,11 @@ strict_benchmark_parameters <- function(
       block_size = 250L
     ),
     latent = exponent_parameters$latent,
-    ssr = exponent_parameters$ssr
+    ssr = list(
+      n_tokens = n_tokens,
+      vocabulary_size = as.integer(maxent_vocabulary_size),
+      initial_distribution = "stationary"
+    )
   )
 }
 
@@ -974,11 +973,11 @@ run_mimicking_replications <- function(
 }
 
 # -------------------------------------------------------------------------
-# v0.5.1: stable latent-mixture calibration
+# v0.6: stable latent-mixture calibration
 # -------------------------------------------------------------------------
 # The latent-mixture generator has materially larger Monte Carlo variability
 # than the other benchmark constructions.  To avoid selecting a parameter
-# that looks close to alpha=1 on only a handful of calibration seeds, v0.5.1
+# that looks close to alpha=1 on only a handful of calibration seeds, v0.6
 # uses a two-stage design:
 #   (i) screen the broad latent grid on a small subset of calibration seeds;
 #  (ii) evaluate a restricted candidate/refinement set on a larger,
@@ -1076,7 +1075,7 @@ calibrate_latent_stable <- function(
   )
 
   out <- list(
-    version = "0.5.1",
+    version = "0.6",
     mode = mode,
     target_alpha = target_alpha,
     target_vocabulary = target_vocabulary,
@@ -1102,7 +1101,7 @@ calibrate_latent_stable <- function(
 combine_calibration_objects <- function(core, latent, save_path = NULL) {
   if (!identical(core$mode, latent$mode)) stop("Calibration modes do not match")
   out <- core
-  out$version <- "0.5.1"
+  out$version <- "0.6"
   out$selected$latent <- latent$selected$latent
   out$tables$latent <- latent$tables$latent
 

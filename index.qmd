@@ -1,27 +1,43 @@
 ---
-title: "Beyond Zipf's Law: a reproducible generative benchmark"
-subtitle: "v0.5.1 — stable latent calibration, Markov control, MLE robustness, bootstrap AUC, joint matching, and NMI sensitivity"
-author: "Working reproducibility notebook"
+title: "Beyond Zipf's Law"
+subtitle: "Reproducibility companion for the generative benchmark"
+author:
+  - name: Arthur Charpentier
+    affiliations:
+      - name: Université du Québec à Montréal (UQAM)
+        city: Montréal
+        country: Canada
+      - name: Kyoto University
+        city: Kyoto
+        country: Japan
 date: last-modified
 bibliography: references.bib
 params:
-  run_simulations: true
-  force_rerun: false
+  analysis_mode: "precomputed"
   quick: false
   n_rep: 100
+  n_tokens: 100000
   n_cal_seeds: 10
   n_latent_cal_seeds: 50
   n_surrogates: 20
   n_boot: 2000
-  heaps_window: 7
   nmi_top_k_values: "25,50,100"
+  rho_values: "0,0.10,0.20,0.35,0.50,0.65,0.80"
+  r_min_values: "1,5,10,20,50,100"
+  vocabulary_size: 5000
+  block_size: 250
 format:
   html:
     toc: true
     toc-depth: 3
+    number-sections: true
     code-fold: true
-    code-summary: "Show code"
-    embed-resources: true
+    code-summary: "Show R code"
+    code-tools: true
+    smooth-scroll: true
+    link-external-newwindow: true
+    fig-cap-location: bottom
+    theme: cosmo
 execute:
   echo: true
   warning: false
@@ -29,505 +45,736 @@ execute:
 jupyter: false
 ---
 
-## Purpose of v0.5.1
+This page is the computational companion to *Beyond Zipf's Law: Equifinality and Mechanistic Inference from Scaling Laws*. It contains the generative constructions, calibration rules, held-out simulations and robustness checks used in the paper. No empirical whale or birdsong data are analysed here.
 
-Version 0.5.1 freezes the benchmark architecture introduced in v0.5 and makes one prespecified numerical correction: the **latent-mixture parameter is selected on a 50-seed calibration panel** rather than on 10 seeds. The held-out evaluation panel remains seeds 2001 onward and is never used for calibration.
-
-The notebook addresses five robustness questions raised during review:
-
-1. **Sequential control:** a stationary non-SSR Markov process has the same finite-Zipf marginal as the exchangeable reference but non-zero temporal dependence.
-2. **Estimator robustness:** the deliberately simple OLS log--log exponent is compared with a conditional discrete-likelihood estimate on the identical rank window.
-3. **Uncertainty in discrimination:** pairwise AUC effects are accompanied by bootstrap intervals for the signed rank effect $R=2\operatorname{AUC}-1$.
-4. **Joint matching:** a second benchmark matches $(\widehat\alpha,V_n)$ before evaluating diagnostics not used in calibration.
-5. **NMI sensitivity:** excess lag-1 normalized mutual information is recomputed after retaining $K=25,50,100$ frequent types plus one `OTHER` category.
-
-The central inferential hierarchy is therefore
+The central benchmark is deliberately controlled: an i.i.d. finite-Zipf process, a persistent Markov chain and canonical sample-space reduction (SSR) share the **same stationary marginal**,
 
 $$
-\text{marginal scaling}
-\longrightarrow
-\text{order dependence}
-\longrightarrow
-\text{directional/history-dependent structure}.
+p_j=\frac{1}{jH_V},\qquad H_V=\sum_{k=1}^{V}\frac1k,
 $$
+
+but encode different sequence dynamics. A latent-scale mixture provides a separate construction in which pooling creates a Zipf-like marginal from non-Zipf conditional distributions.
+
+::: {.callout-note title="Three ways to use this page"}
+The default `analysis_mode: "precomputed"` renders the published numerical outputs quickly. Set `analysis_mode: "results"` to rebuild tables and figures from an existing `results/` directory. Set `analysis_mode: "recompute"` to rerun calibration, held-out simulations and robustness checks before rendering. The full run is intentionally slower; `quick: true` provides a short smoke test.
+:::
 
 ```{r}
 #| label: setup
-required <- c("ggplot2", "patchwork", "knitr")
-missing <- required[!vapply(required, requireNamespace, logical(1), quietly = TRUE)]
-if (length(missing)) {
-  stop("Install required packages first: ", paste(missing, collapse = ", "))
-}
-
-source("R/generators.R")
-source("R/diagnostics.R")
-source("R/calibration.R")
-source("R/figures.R")
-source("R/run_all.R")
-
-dir.create("figures", showWarnings = FALSE, recursive = TRUE)
-dir.create("results", showWarnings = FALSE, recursive = TRUE)
-dir.create("tables", showWarnings = FALSE, recursive = TRUE)
-set.seed(20260808)
-
 parse_integer_vector <- function(x) {
   as.integer(trimws(strsplit(as.character(x), ",", fixed = TRUE)[[1L]]))
 }
+parse_numeric_vector <- function(x) {
+  as.numeric(trimws(strsplit(as.character(x), ",", fixed = TRUE)[[1L]]))
+}
+
+analysis_mode <- match.arg(
+  as.character(params$analysis_mode),
+  c("precomputed", "results", "recompute")
+)
+live <- analysis_mode != "precomputed"
+
 nmi_top_k_values <- parse_integer_vector(params$nmi_top_k_values)
+rho_values <- parse_numeric_vector(params$rho_values)
+r_min_values <- parse_integer_vector(params$r_min_values)
+V <- as.integer(params$vocabulary_size)
+L <- as.integer(params$block_size)
 
-fmt_mean_sd <- function(mean, sd, digits = 3L) {
-  sprintf(paste0("%.", digits, "f (%.", digits, "f)"), mean, sd)
-}
+if (live) {
+  required <- c("ggplot2", "patchwork", "knitr")
+  missing <- required[!vapply(required, requireNamespace, logical(1), quietly = TRUE)]
+  if (length(missing)) {
+    stop("Install required packages first: ", paste(missing, collapse = ", "))
+  }
 
-save_table <- function(df, stem, caption = NULL, digits = 3L) {
-  csv_path <- file.path("tables", paste0(stem, ".csv"))
-  tex_path <- file.path("tables", paste0(stem, ".tex"))
-  utils::write.csv(df, csv_path, row.names = FALSE)
-  latex <- knitr::kable(
-    df, format = "latex", booktabs = TRUE, digits = digits,
-    caption = caption, escape = TRUE
-  )
-  writeLines(as.character(latex), tex_path)
-  knitr::kable(df, format = "html", digits = digits, caption = caption)
-}
-```
+  source("R/generators.R")
+  source("R/diagnostics.R")
+  source("R/calibration.R")
+  source("R/figures.R")
+  source("R/run_all.R")
 
-## One-click use in RStudio
+  dir.create("figures", showWarnings = FALSE, recursive = TRUE)
+  dir.create("results", showWarnings = FALSE, recursive = TRUE)
+  dir.create("tables", showWarnings = FALSE, recursive = TRUE)
+  set.seed(20260809)
 
-A fresh copy of this repository can be rendered directly in RStudio. With the default settings above, the first **Render** runs the full paper analysis because the required result files do not yet exist. Later renders detect those files and rebuild only the notebook, tables and figures.
+  if (analysis_mode == "recompute") {
+    if (isTRUE(params$quick)) {
+      run_all(
+        n_rep = 8L,
+        n_cal_seeds = 3L,
+        n_latent_cal_seeds = 8L,
+        n_surrogates = 3L,
+        n_boot = 250L,
+        nmi_top_k_values = nmi_top_k_values,
+        rho_values = unique(c(0, 0.35, 0.65)),
+        r_min_values = unique(c(1L, 10L, 50L)),
+        n_tokens = as.integer(params$n_tokens),
+        vocabulary_size = V,
+        block_size = L
+      )
+    } else {
+      run_all(
+        n_rep = as.integer(params$n_rep),
+        n_cal_seeds = as.integer(params$n_cal_seeds),
+        n_latent_cal_seeds = as.integer(params$n_latent_cal_seeds),
+        n_surrogates = as.integer(params$n_surrogates),
+        n_boot = as.integer(params$n_boot),
+        nmi_top_k_values = nmi_top_k_values,
+        rho_values = rho_values,
+        r_min_values = r_min_values,
+        n_tokens = as.integer(params$n_tokens),
+        vocabulary_size = V,
+        block_size = L
+      )
+    }
+  }
 
-To deliberately rerun every calibration and held-out replication, set
-
-```yaml
-force_rerun: true
-```
-
-and render once. Set it back to `false` afterwards.
-
-```{r}
-#| label: optional-run
-should_run <- isTRUE(params$run_simulations) &&
-  (isTRUE(params$force_rerun) || !paper_outputs_exist("results"))
-
-if (should_run) {
-  if (isTRUE(params$quick)) {
-    run_all(
-      n_rep = 10L,
-      n_cal_seeds = 3L,
-      n_latent_cal_seeds = 8L,
-      n_surrogates = 3L,
-      heaps_window = as.integer(params$heaps_window),
-      n_boot = 250L,
-      nmi_top_k_values = nmi_top_k_values
-    )
-  } else {
-    run_all(
-      n_rep = as.integer(params$n_rep),
-      n_cal_seeds = as.integer(params$n_cal_seeds),
-      n_latent_cal_seeds = as.integer(params$n_latent_cal_seeds),
-      n_surrogates = as.integer(params$n_surrogates),
-      heaps_window = as.integer(params$heaps_window),
-      n_boot = as.integer(params$n_boot),
-      nmi_top_k_values = nmi_top_k_values
+  needed <- .paper_outputs("results")
+  missing_results <- needed[!file.exists(needed)]
+  if (length(missing_results)) {
+    stop(
+      "Missing simulation outputs: ", paste(missing_results, collapse = ", "),
+      ". Use analysis_mode: recompute, or restore the results/ directory."
     )
   }
-} else if (paper_outputs_exist("results")) {
-  cat("Existing paper outputs found: simulations were not rerun.\n")
+}
+
+precomputed <- function(name) {
+  utils::read.csv(file.path("tables", "precomputed", name), check.names = FALSE)
+}
+
+show_table <- function(x, caption = NULL, digits = 3L) {
+  knitr::kable(x, format = "html", digits = digits, caption = caption)
 }
 ```
 
-```{r}
-#| label: require-results
-needed_results <- .paper_outputs("results")
-missing_results <- needed_results[!file.exists(needed_results)]
-if (length(missing_results)) {
-  stop(
-    "Missing simulation outputs: ", paste(missing_results, collapse = ", "),
-    ". Set run_simulations: true (or force_rerun: true) and Render once."
-  )
-}
+# Reproducing the analysis
+
+The repository separates model code from the rendered companion:
+
+```text
+R/generators.R      generative constructions
+R/diagnostics.R     exponent, information and transition statistics
+R/calibration.R     calibration and held-out replication helpers
+R/figures.R         paper-facing figures
+R/run_all.R         end-to-end simulation pipeline
+results/            raw calibration, held-out and robustness outputs
+figures/            paper-facing PDFs
+tables/             CSV and LaTeX tables
+index.qmd           this reproducibility companion
 ```
 
-# 1. Calibration design
+For a complete rerun in RStudio, either set
 
-## 1.1 Stable latent-mixture calibration
-
-The latent construction showed greater Monte Carlo variability than the other benchmark constructions. Version 0.5.1 therefore uses a two-stage procedure that remains completely separate from held-out evaluation:
-
-- the broad latent grid is screened on a small prespecified subset of calibration seeds;
-- the best regions and local refinements are evaluated on **50 calibration seeds**;
-- the final latent parameter is selected from this 50-seed calibration panel;
-- evaluation still uses seeds 2001--2100.
-
-This change increases calibration precision without using any held-out information for tuning.
-
-```{r}
-#| label: calibration-tables
-cal_exp <- readRDS("results/calibration_exponent.rds")
-cal_joint <- readRDS("results/calibration_joint.rds")
-cal_exp_summary <- utils::read.csv("results/calibration_exponent_summary.csv", stringsAsFactors = FALSE)
-cal_joint_summary <- utils::read.csv("results/calibration_joint_summary.csv", stringsAsFactors = FALSE)
-
-save_table(
-  cal_exp_summary,
-  "table_calibration_exponent_v051",
-  caption = "Exponent-only calibration. The latent-mixture final parameter is selected on the enlarged calibration panel."
-)
+```yaml
+analysis_mode: "recompute"
 ```
 
-```{r}
-#| label: calibration-joint-table
-save_table(
-  cal_joint_summary,
-  "table_calibration_joint_v051",
-  caption = "Joint calibration targeting the OLS exponent and final vocabulary size."
-)
+and render `index.qmd`, or use:
+
+```r
+source("RUN_IN_RSTUDIO.R")
 ```
 
-# 2. Generative constructions and observation map
+The full analysis uses 100 held-out replications per primary construction, 20 shuffle surrogates for the excess-NMI null, and 2000 bootstrap resamples for pairwise AUC effects. Calibration and held-out seeds are disjoint.
 
-The strict benchmark contains four constructions with deliberately different dependence structures.
+# Generative benchmark
 
-**Finite Zipf reference.** Independent tokens are sampled from
+## Finite i.i.d. Zipf reference
+
+Tokens are sampled independently from
 
 $$
-p(r;1,V)=\frac{r^{-1}}{\sum_{j=1}^V j^{-1}}.
+p(r;1,V)=\frac{r^{-1}}{\sum_{j=1}^{V}j^{-1}},\qquad V=5000.
 $$
 
-It is a transparent constraint-based reference rather than a dynamical mechanism.
+This process supplies a finite-Zipf reference. It is not used as a dynamical explanation.
 
-**Zipf Markov control.** The stationary marginal is the same finite-Zipf distribution, while transitions follow
+## Sticky Markov control
+
+Within blocks of length $L=250$, the transition kernel is
 
 $$
 P_{ij}=\rho\mathbf 1\{i=j\}+(1-\rho)p_j,
 \qquad \rho=0.35.
 $$
 
-It therefore provides a non-SSR process with genuine serial dependence.
-
-**Latent mixture.** Sequences are conditionally non-Zipfian but heterogeneous in scale; pooling can create an approximately Zipfian marginal [@schwab2014; @aitchison2016].
-
-**Sample-space reduction.** The current state restricts the accessible future state space until restart [@corominas2015; @thurner2015].
-
-Random segmentation and Simon reinforcement are retained separately as observation-window / compatibility examples [@simon1955; @li1992; @conrad2004; @ferrerElvevag2010].
-
-The prespecified primary rank summary remains
+The chain is stationary under $p$ because
 
 $$
-10\le r\le500,\qquad N_{(r)}\ge5,
+\sum_i p_iP_{ij}=\rho p_j+(1-\rho)p_j\sum_i p_i=p_j.
 $$
 
-with
+It is also reversible: for $i\neq j$, $p_iP_{ij}=p_jP_{ji}=(1-\rho)p_ip_j$. The control therefore contains serial dependence without a population preference for transitions toward more or less frequent ranks.
+
+## Canonical sample-space reduction
+
+For $i>1$, SSR moves uniformly to one of the lower states; after reaching state 1 it restarts uniformly over the full state space:
 
 $$
-\log \widehat p_{(r)}=a-\widehat\alpha_{\mathrm{OLS}}\log r+\varepsilon_r.
+P_{ij}=\frac{1}{i-1}\mathbf 1\{j<i\},\qquad
+P_{1j}=\frac1V.
 $$
 
-This OLS slope is intentionally a low-dimensional descriptive statistic, not a stand-alone power-law goodness-of-fit test [@clauset2009].
+The stationary distribution is again finite Zipf. If $\pi_j=(jH_V)^{-1}$,
 
-The likelihood robustness estimator uses the same retained ranks $\mathcal R$:
+$$
+\begin{aligned}
+(\pi P)_j
+&=\frac{\pi_1}{V}+\sum_{i=j+1}^{V}\frac{\pi_i}{i-1}\\
+&=\frac1{H_V}\left[\frac1V+\sum_{i=j+1}^{V}\frac1{i(i-1)}\right]\\
+&=\frac1{jH_V}.
+\end{aligned}
+$$
+
+SSR is therefore **not calibrated to the exponent**. The observed chain starts from stationarity; natural cycles between restarts define the primary sequence boundaries [@corominas2015; @thurner2015].
+
+## Latent-scale mixture
+
+Each realization contains 400 sequences of length 250. A scale $S_s$ is sampled once per sequence from a log-uniform distribution on $[0.5,8500]$. Conditional on $S_s=s$, ranks follow a truncated discrete-exponential law,
+
+$$
+P(R\le r\mid S_s=s)
+=\frac{1-\exp(-r/s)}{1-\exp(-V/s)},
+\qquad r=1,\ldots,V.
+$$
+
+The conditional laws are not Zipf. Pooling across scales creates the approximately Zipfian marginal [@schwab2014; @aitchison2016]. The scale range is the only primary parameter chosen numerically to target the fitted exponent.
+
+```{r}
+#| label: parameter-table
+if (live) {
+  cal_exp <- readRDS("results/calibration_exponent.rds")
+  strict_parameters <- strict_benchmark_parameters(
+    exponent_parameters = cal_exp$selected,
+    n_tokens = as.integer(params$n_tokens),
+    maxent_vocabulary_size = V,
+    markov_vocabulary_size = V,
+    markov_persistence = 0.35
+  )
+  strict_parameters$maxent$block_size <- L
+  strict_parameters$markov$block_size <- L
+  strict_parameters$ssr$vocabulary_size <- V
+  strict_parameters$ssr$initial_distribution <- "stationary"
+
+  latent_par <- strict_parameters$latent
+  parameter_display <- data.frame(
+    Construction = c(
+      "finite Zipf reference", "Zipf Markov control",
+      "sample-space reduction", "latent mixture"
+    ),
+    Status = c("fixed", "fixed", "fixed", "calibrated"),
+    Parameters = c(
+      paste0("V=", V, "; alpha=1; block length=", L),
+      paste0("V=", V, "; alpha=1; rho=0.35; block length=", L),
+      paste0("V=", V, "; stationary start; uniform restart"),
+      paste0(
+        latent_par$n_sequences, " sequences x ", latent_par$sequence_length,
+        "; V=", latent_par$vocabulary_size,
+        "; scale=[", signif(latent_par$scale_min, 5), ", ",
+        signif(latent_par$scale_max, 5), "]"
+      )
+    )
+  )
+} else {
+  parameter_display <- precomputed("primary_parameters.csv")
+}
+show_table(parameter_display, "Primary benchmark parameters.")
+```
+
+# Observation map and exponent summaries
+
+The prespecified rank domain is
+
+$$
+10\le r\le500,\qquad N_{(r)}\ge5.
+$$
+
+The first summary is the negative OLS slope from regressing $\log\widehat p_{(r)}$ on $\log r$. It is retained as a deliberately compressed observer, not as a recommended stand-alone power-law test [@clauset2009].
+
+A restricted-domain likelihood estimate uses the same empirically retained rank set $\mathcal R$:
 
 $$
 q_r(\alpha)=\frac{r^{-\alpha}}{\sum_{j\in\mathcal R}j^{-\alpha}},
 $$
 
+and
+
 $$
-\ell(\alpha)
-=-\alpha\sum_{r\in\mathcal R}N_{(r)}\log r
--N_{\mathcal R}\log\left(\sum_{j\in\mathcal R}j^{-\alpha}\right).
+\widehat\alpha_{\rm MLE}
+=\arg\max_{\alpha>0}
+\left[
+-\alpha\sum_{r\in\mathcal R}N_{(r)}\log r
+-N_{\mathcal R}\log\left(\sum_{j\in\mathcal R}j^{-\alpha}\right)
+\right].
 $$
 
-# 3. Held-out benchmark
+The term *restricted-domain MLE* distinguishes truncation of the fitted rank set from conditioning on latent variables.
+
+# Held-out results
 
 ```{r}
 #| label: load-heldout
-rep_strict <- readRDS("results/benchmark_strict_replications.rds")
-rep_mimic <- readRDS("results/benchmark_mimicking_replications.rds")
-rep_joint <- readRDS("results/benchmark_joint_strict_replications.rds")
-auc_boot <- utils::read.csv("results/diagnostic_pairwise_auc_bootstrap_strict.csv", stringsAsFactors = FALSE)
-auc_boot_joint <- utils::read.csv("results/diagnostic_pairwise_auc_bootstrap_joint.csv", stringsAsFactors = FALSE)
-nmi_topk <- utils::read.csv("results/nmi_topk_sensitivity_strict.csv", stringsAsFactors = FALSE)
+if (live) {
+  rep_strict <- readRDS("results/benchmark_strict_replications.rds")
+  rep_mimic <- readRDS("results/benchmark_mimicking_replications.rds")
+  auc_boot <- utils::read.csv(
+    "results/diagnostic_pairwise_auc_bootstrap_strict.csv",
+    stringsAsFactors = FALSE
+  )
+  nmi_topk <- utils::read.csv(
+    "results/nmi_topk_sensitivity_strict.csv",
+    stringsAsFactors = FALSE
+  )
+  rmin_sens <- utils::read.csv(
+    "results/alpha_rmin_sensitivity_strict.csv",
+    stringsAsFactors = FALSE
+  )
+  rho_sens <- utils::read.csv(
+    "results/markov_rho_sensitivity.csv",
+    stringsAsFactors = FALSE
+  )
+  ssr_boundary <- utils::read.csv(
+    "results/ssr_boundary_sensitivity.csv",
+    stringsAsFactors = FALSE
+  )
 
-strict_parameters <- strict_benchmark_parameters(
-  exponent_parameters = cal_exp$selected,
-  n_tokens = 100000L,
-  maxent_vocabulary_size = 5000L,
-  markov_vocabulary_size = 5000L,
-  markov_persistence = 0.35
-)
-sims_strict <- simulate_strict_benchmark_once(
-  seed = 2001L, n_tokens = 100000L, parameters = strict_parameters
-)
-```
-
-## 3.1 Main numerical table
-
-```{r}
-#| label: strict-summary-table
-strict_summary <- diagnostic_summary_table(rep_strict)
-get_diag <- function(g, v, field = "mean") {
-  x <- strict_summary[strict_summary$generator == g & strict_summary$diagnostic == v, field]
-  if (!length(x)) NA_real_ else x[1L]
+  sims_strict <- simulate_strict_benchmark_once(
+    seed = 2001L,
+    n_tokens = as.integer(params$n_tokens),
+    parameters = strict_parameters
+  )
 }
-get_diag_sd <- function(g, v) get_diag(g, v, "sd")
-
-generators <- unique(rep_strict$generator)
-strict_wide <- data.frame(
-  Construction = generators,
-  `OLS alpha` = vapply(generators, function(g) fmt_mean_sd(get_diag(g, "alpha"), get_diag_sd(g, "alpha")), character(1)),
-  `MLE alpha` = vapply(generators, function(g) fmt_mean_sd(get_diag(g, "alpha_mle"), get_diag_sd(g, "alpha_mle")), character(1)),
-  `Final V` = vapply(generators, function(g) fmt_mean_sd(get_diag(g, "vocabulary"), get_diag_sd(g, "vocabulary"), digits = 1L), character(1)),
-  `Excess NMI` = vapply(generators, function(g) fmt_mean_sd(get_diag(g, "transition_nmi_excess"), get_diag_sd(g, "transition_nmi_excess")), character(1)),
-  `Direction D` = vapply(generators, function(g) fmt_mean_sd(get_diag(g, "transition_toward_more_frequent"), get_diag_sd(g, "transition_toward_more_frequent")), character(1)),
-  check.names = FALSE,
-  stringsAsFactors = FALSE
-)
-save_table(
-  strict_wide,
-  "table_heldout_strict_v051",
-  caption = "Held-out diagnostics (mean and standard deviation across independent replications)."
-)
 ```
 
-## 3.2 Marginal scaling and OLS/MLE robustness
+## Same population marginal, similar rank curves
+
+The i.i.d. reference and SSR remain nearly indistinguishable under the fitted exponent, while the latent mixture overlaps them despite being generated through aggregation. The Markov control has the same stationary marginal but a shifted finite-sample exponent distribution.
 
 ```{r}
-#| label: fig-rank-frequency-v051
-#| fig-cap: "Distinct constructions can display similar marginal rank--frequency scaling in a held-out realization."
-#| fig-width: 7.5
-#| fig-height: 5
-p_rank <- plot_rank_frequency(sims_strict)
-p_rank
-ggplot2::ggsave("figures/fig_rank_frequency_v051.pdf", p_rank, width = 7.5, height = 5)
+#| label: fig-rank-frequency
+#| fig-cap: "Held-out rank--frequency curves from three processes with the same finite-Zipf stationary marginal and a latent mixture with a similar pooled marginal."
+#| fig-width: 8
+#| fig-height: 5.2
+if (live) {
+  p_rank <- plot_rank_frequency(sims_strict)
+  print(p_rank)
+} else {
+  knitr::include_graphics("figures/precomputed/fig_rank_frequency_v060.png")
+}
 ```
 
 ```{r}
-#| label: fig-alpha-estimators-v051
-#| fig-cap: "Held-out rank-exponent estimates under the prespecified OLS summary and conditional discrete likelihood."
+#| label: fig-alpha-estimators
+#| fig-cap: "Held-out exponent estimates under the OLS rank summary and the restricted-domain likelihood estimator."
 #| fig-width: 8
 #| fig-height: 5.5
-p_estimators <- plot_alpha_estimator_comparison(rep_strict)
-p_estimators
-ggplot2::ggsave("figures/fig_alpha_estimator_robustness_v051.pdf", p_estimators, width = 8, height = 5.5)
+if (live) {
+  p_estimators <- plot_alpha_estimator_comparison(rep_strict)
+  print(p_estimators)
+} else {
+  knitr::include_graphics("figures/precomputed/fig_alpha_estimator_robustness_v060.png")
+}
 ```
 
-# 4. Sequential control: generic order dependence versus SSR directionality
-
-Excess lag-1 normalized mutual information is calculated after retaining the $K$ most frequent types plus `OTHER` and subtracting the expectation under within-sequence shuffling:
-
-$$
-I_{\mathrm{excess}}(K)
-=I_{\mathrm{NMI}}^{(K)}(X_t;X_{t+1})
--E_{\mathrm{shuffle}}\left[I_{\mathrm{NMI}}^{(K)}(X_t;X_{t+1})\right].
-$$
-
-This statistic tests for order dependence. It is deliberately **not** interpreted as SSR-specific. Directionality is measured separately by
-
-$$
-D=P(R_{t+1}<R_t\mid R_{t+1}\ne R_t).
-$$
-
-For exchangeable pairs, and for the stationary refresh component of the Markov control conditional on a change, symmetry gives $D\simeq1/2$. Canonical SSR instead predicts a strong directional asymmetry.
-
 ```{r}
-#| label: fig-sequence-tree-v051
-#| fig-cap: "The Markov control separates generic sequential dependence from SSR-like directionality: excess information detects order dependence, while transition direction isolates the asymmetric sample-space-reduction signature."
-#| fig-width: 12
-#| fig-height: 5.5
-p_sequence <- plot_sequence_diagnostic_figure(rep_strict)
-p_sequence
-ggplot2::ggsave("figures/fig_sequence_identification_v051.pdf", p_sequence, width = 12, height = 5.5)
-```
-
-# 5. Bootstrap uncertainty in pairwise discrimination
-
-For a scalar diagnostic $T$, pairwise discrimination is summarized by the signed rank effect
-
-$$
-R_T=2\operatorname{AUC}_T-1\in[-1,1].
-$$
-
-The absolute value $|R_T|$ is a bounded effect size: 0 denotes no ordinal discrimination and 1 perfect separation. We bootstrap the two held-out samples independently and report 95% intervals for the **signed** effect, so near-zero absolute effects are not mistaken for precise evidence of separation.
-
-```{r}
-#| label: auc-bootstrap-table
-auc_key <- auc_boot[auc_boot$diagnostic %in% c(
-  "alpha", "alpha_mle", "transition_nmi_excess", "transition_toward_more_frequent"
-), c(
-  "pair", "diagnostic", "rank_effect", "rank_effect_lower", "rank_effect_upper",
-  "separation", "ci_contains_zero", "n_x", "n_y"
-)]
-auc_key$rank_effect <- round(auc_key$rank_effect, 3)
-auc_key$rank_effect_lower <- round(auc_key$rank_effect_lower, 3)
-auc_key$rank_effect_upper <- round(auc_key$rank_effect_upper, 3)
-auc_key$separation <- round(auc_key$separation, 3)
-save_table(
-  auc_key,
-  "table_auc_bootstrap_key_v051",
-  caption = "Pairwise signed AUC rank effects and 95% bootstrap intervals for the principal marginal and sequential diagnostics."
+#| label: heldout-table
+if (live) {
+  strict_summary <- diagnostic_summary_table(rep_strict)
+  get_diag <- function(g, v, field = "mean") {
+    x <- strict_summary[
+      strict_summary$generator == g & strict_summary$diagnostic == v,
+      field
+    ]
+    if (!length(x)) NA_real_ else x[1L]
+  }
+  get_sd <- function(g, v) get_diag(g, v, "sd")
+  fmt <- function(m, s, digits = 3L) {
+    sprintf(paste0("%.", digits, "f (%.", digits, "f)"), m, s)
+  }
+  gs <- c(
+    "finite Zipf reference", "Zipf Markov control",
+    "sample-space reduction", "latent mixture"
+  )
+  heldout_display <- data.frame(
+    Construction = gs,
+    `OLS alpha` = vapply(gs, function(g) fmt(get_diag(g, "alpha"), get_sd(g, "alpha")), character(1)),
+    `MLE alpha` = vapply(gs, function(g) fmt(get_diag(g, "alpha_mle"), get_sd(g, "alpha_mle")), character(1)),
+    `Final V` = vapply(gs, function(g) fmt(get_diag(g, "vocabulary"), get_sd(g, "vocabulary"), 1L), character(1)),
+    `Excess NMI` = vapply(gs, function(g) fmt(get_diag(g, "transition_nmi_excess"), get_sd(g, "transition_nmi_excess")), character(1)),
+    `Direction D` = vapply(gs, function(g) fmt(get_diag(g, "transition_toward_more_frequent"), get_sd(g, "transition_toward_more_frequent")), character(1)),
+    check.names = FALSE
+  )
+} else {
+  heldout_display <- precomputed("heldout_summary.csv")
+}
+show_table(
+  heldout_display,
+  "Held-out diagnostics: mean (standard deviation) over 100 independent replications."
 )
 ```
 
+# Finite-sample effect of Markov dependence
+
+Marginal equivalence does not imply equal sampling laws for nonlinear statistics. For any centered fixed function $f$, the Markov block satisfies
+
+$$
+\operatorname{Cov}\{f(X_t),f(X_{t+h})\}
+=\rho^h\operatorname{Var}_p\{f(X)\}.
+$$
+
+For independent blocks of length $L$, the exact variance-inflation factor for a sample mean is
+
+$$
+\tau_L(\rho)
+=1+2\sum_{h=1}^{L-1}\left(1-\frac{h}{L}\right)\rho^h,
+$$
+
+with effective-sample-size representation
+
+$$
+N_{\rm eff}=\frac{n}{\tau_L(\rho)}.
+$$
+
+At $\rho=0.35$, $L=250$ and $n=10^5$, this gives $N_{\rm eff}\simeq48{,}302$. This is an exact variance result for sample means of fixed functions, not an exact bias formula for the empirical-rank exponent estimator.
+
+The expected realized vocabulary can also be calculated under the implemented block design. For a type with stationary probability $p_j$, absence from one block has probability
+
+$$
+(1-p_j)\{1-(1-\rho)p_j\}^{L-1}.
+$$
+
+For $B=n/L$ independent blocks,
+
+$$
+E[V_n]
+=\sum_{j=1}^{V}
+\left[
+1-\left\{(1-p_j)[1-(1-\rho)p_j]^{L-1}\right\}^{B}
+\right].
+$$
+
+At the primary parameters the theoretical expectation is 4598.9 observed types, close to the held-out mean of 4601.0.
+
 ```{r}
-#| label: fig-bootstrap-key-v051
-#| fig-cap: "Bootstrap intervals distinguish weak exponent-based discrimination from strong structural separation."
+#| label: markov-theory-table
+if (live) {
+  theory_display <- data.frame(
+    rho = 0.35,
+    block_size = L,
+    tau = markov_tau_block(0.35, L),
+    n_eff = markov_effective_n(as.integer(params$n_tokens), 0.35, L),
+    expected_V_iid = expected_vocabulary_iid(as.integer(params$n_tokens), V),
+    expected_V_markov = expected_vocabulary_markov(
+      as.integer(params$n_tokens), 0.35, V, 1, L
+    )
+  )
+} else {
+  theory_display <- precomputed("markov_theory.csv")
+}
+show_table(theory_display, "Finite-sample quantities implied by the Markov control.", digits = 2L)
+```
+
+The persistence sweep compares a Markov sample of size $n$ with an i.i.d. Zipf sample of size $N_{\rm eff}(\rho)$. The two fitted OLS exponents are close through moderate persistence and separate more clearly for large $\rho$; the effective-sample-size calculation is an explanation for much of the finite-sample shift, not an identity for the estimator bias.
+
+```{r}
+#| label: fig-markov-neff
+#| fig-cap: "Finite-sample exponent shift as Markov persistence increases. The i.i.d. comparison uses the block-adjusted effective sample size."
+#| fig-width: 8
+#| fig-height: 5.2
+if (live) {
+  rho_groups <- split(rho_sens, rho_sens$rho)
+  rho_summary <- do.call(rbind, lapply(rho_groups, function(d) {
+    data.frame(
+      rho = d$rho[1L],
+      markov_alpha = mean(d$markov_alpha, na.rm = TRUE),
+      iid_neff_alpha = mean(d$iid_neff_alpha, na.rm = TRUE)
+    )
+  }))
+  rho_long <- rbind(
+    data.frame(rho = rho_summary$rho, alpha = rho_summary$markov_alpha, estimator = "Markov, n=100000"),
+    data.frame(rho = rho_summary$rho, alpha = rho_summary$iid_neff_alpha, estimator = "i.i.d. Zipf, n=N_eff")
+  )
+  p_rho <- ggplot2::ggplot(
+    rho_long,
+    ggplot2::aes(x = rho, y = alpha, linetype = estimator, shape = estimator)
+  ) +
+    ggplot2::geom_line(linewidth = 0.8) +
+    ggplot2::geom_point(size = 2) +
+    ggplot2::geom_hline(yintercept = 1, linetype = 3) +
+    ggplot2::labs(x = expression(rho), y = expression(mean(hat(alpha)[OLS])), linetype = NULL, shape = NULL) +
+    ggplot2::theme_minimal(base_size = 11) +
+    ggplot2::theme(legend.position = "bottom")
+  print(p_rho)
+} else {
+  knitr::include_graphics("figures/precomputed/fig_markov_neff_v060.png")
+}
+```
+
+# Sequence structure
+
+The marginal comparison discards order. We use two statistics to retain it.
+
+For the $K$ most frequent types plus an `OTHER` category,
+
+$$
+I_{\rm NMI}(X;Y)=\frac{I(X;Y)}{\sqrt{H(X)H(Y)}},
+$$
+
+and
+
+$$
+I_{\rm excess}(K)
+=I_{\rm NMI}^{(K)}(X_t;X_{t+1})
+-E_{\rm shuffle}\left[I_{\rm NMI}^{(K)}(X_t;X_{t+1})\right].
+$$
+
+The default uses $K=50$ and 20 independently shuffled surrogates within each sequence. Positive $I_{\rm excess}$ indicates order information relative to this null; it does not identify the form of the dependence.
+
+Direction is measured separately by
+
+$$
+D=P(R_{t+1}<R_t\mid R_{t+1}\neq R_t),
+$$
+
+where $R_t$ is the global empirical frequency rank. Reversibility gives $D=1/2$ for the Markov control in population. Strong within-cycle directionality is built into canonical SSR, so its large $D$ is a prespecified positive control rather than a discovered signature.
+
+```{r}
+#| label: fig-sequence-diagnostics
+#| fig-cap: "Excess lag-1 information detects order dependence; transition direction separates reversible Markov persistence from the directional contraction built into canonical SSR."
 #| fig-width: 11
-#| fig-height: 8
-p_boot_key <- plot_bootstrap_selected_diagnostics(auc_boot)
-p_boot_key
-ggplot2::ggsave("figures/fig_bootstrap_key_diagnostics_v051.pdf", p_boot_key, width = 11, height = 8)
-```
-
-# 6. Sensitivity of excess NMI to alphabet collapse
-
-```{r}
-#| label: nmi-sensitivity-table
-nmi_key <- aggregate(
-  transition_nmi_excess ~ generator + top_k,
-  data = nmi_topk,
-  FUN = mean
-)
-nmi_wide <- reshape(
-  nmi_key,
-  idvar = "generator",
-  timevar = "top_k",
-  direction = "wide"
-)
-names(nmi_wide) <- sub("transition_nmi_excess\\.", "K=", names(nmi_wide))
-for (j in seq_along(nmi_wide)) {
-  if (is.numeric(nmi_wide[[j]])) nmi_wide[[j]] <- round(nmi_wide[[j]], 4)
+#| fig-height: 5.4
+if (live) {
+  p_sequence <- plot_sequence_diagnostic_figure(rep_strict)
+  print(p_sequence)
+} else {
+  knitr::include_graphics("figures/precomputed/fig_sequence_identification_v060.png")
 }
-save_table(
-  nmi_wide,
-  "table_nmi_sensitivity_v051",
-  caption = "Mean excess lag-1 NMI after retaining the K most frequent types plus OTHER."
-)
 ```
 
+Pairwise rank effects make the contrast explicit. Exponent effects between the i.i.d. reference, latent mixture and SSR are weak, whereas order information separates sequential from exchangeable constructions and $D$ separates SSR from the other models in this controlled design. The effects are univariate AUC summaries, not distances between model distributions.
+
 ```{r}
-#| label: fig-nmi-sensitivity-v051
-#| fig-cap: "Sequence-information conclusions are stable when the collapsed alphabet retains 25, 50, or 100 frequent types."
+#| label: fig-bootstrap-effects
+#| fig-cap: "Signed AUC rank effects with 95% bootstrap intervals for the two exponent summaries and the two sequence diagnostics."
+#| fig-width: 10
+#| fig-height: 7.3
+if (live) {
+  p_boot <- plot_bootstrap_selected_diagnostics(auc_boot)
+  print(p_boot)
+} else {
+  knitr::include_graphics("figures/precomputed/fig_bootstrap_key_diagnostics_v060.png")
+}
+```
+
+# Aggregation in the latent mixture
+
+The latent-scale construction is exchangeable conditional on sequence-specific scale. Its relevant diagnostic is therefore conditioning rather than transition direction. Pooling produces an approximately Zipfian marginal even though the scale-conditioned distributions are not Zipf laws.
+
+```{r}
+#| label: fig-latent-conditioning
+#| fig-cap: "Pooling across latent scales creates marginal scaling that is absent within scale-conditioned regimes."
+#| fig-width: 7.5
+#| fig-height: 5.2
+if (live) {
+  p_latent <- plot_latent_conditioning(sims_strict$latent)
+  print(p_latent)
+} else {
+  knitr::include_graphics("figures/precomputed/fig_latent_conditioning_v060.png")
+}
+```
+
+This example is a controlled illustration of aggregation. Conditioning need not weaken Zipf scaling in every empirical system; it does so here because the data-generating construction was designed around latent scale heterogeneity.
+
+# Observation-design sensitivity
+
+## Upper-rank cutoff
+
+Random segmentation and Simon reinforcement are kept outside the primary exact-marginal comparison. Their role is to show how the fitted exponent can depend on the observation window [@simon1955; @li1992; @conrad2004; @ferrerElvevag2010]. Generator parameters are fixed while the requested upper rank varies over
+
+$$
+r_{\max}\in\{300,500,1000,2000,3000\}.
+$$
+
+Random segmentation passes through a near-one OLS exponent at the primary window and moves far from one at other cutoffs; Simon reinforcement remains closer to one over the same range.
+
+```{r}
+#| label: fig-rmax
+#| fig-cap: "Sensitivity of the fitted OLS exponent to the requested upper-rank cutoff. Open points mark fits truncated earlier by the minimum-count rule."
+#| fig-width: 9
+#| fig-height: 5.4
+if (live) {
+  strict_sens <- utils::read.csv("results/alpha_sensitivity_strict_replications.csv", stringsAsFactors = FALSE)
+  mimic_sens <- utils::read.csv("results/alpha_sensitivity_mimicking_replications.csv", stringsAsFactors = FALSE)
+  p_rmax <- plot_alpha_sensitivity(rbind(strict_sens, mimic_sens), primary_r_max = 500L)
+  print(p_rmax)
+} else {
+  knitr::include_graphics("figures/precomputed/fig_alpha_rmax_sensitivity_v060.png")
+}
+```
+
+## Lower-rank cutoff
+
+The lower cutoff varies over
+
+$$
+r_{\min}\in\{1,5,10,20,50,100\},
+$$
+
+with $r_{\max}=500$ and the count threshold unchanged. The most visible sensitivity occurs for the latent mixture: its mean restricted-domain estimate declines from 1.048 at $r_{\min}=1$ to 1.004 at $r_{\min}=10$ and 0.998 at $r_{\min}=20$, reflecting curvature in the head of the pooled distribution.
+
+```{r}
+#| label: fig-rmin
+#| fig-cap: "Sensitivity of OLS and restricted-domain exponent estimates to the lower-rank cutoff."
+#| fig-width: 9
+#| fig-height: 6
+if (live) {
+  key <- interaction(rmin_sens$generator, rmin_sens$r_min, drop = TRUE)
+  rmin_summary <- do.call(rbind, lapply(split(seq_len(nrow(rmin_sens)), key), function(idx) {
+    d <- rmin_sens[idx, , drop = FALSE]
+    data.frame(
+      generator = d$generator[1L],
+      r_min = d$r_min[1L],
+      alpha = mean(d$alpha, na.rm = TRUE),
+      alpha_mle = mean(d$alpha_mle, na.rm = TRUE)
+    )
+  }))
+  rmin_long <- rbind(
+    data.frame(generator = rmin_summary$generator, r_min = rmin_summary$r_min, alpha = rmin_summary$alpha, estimator = "OLS log-log"),
+    data.frame(generator = rmin_summary$generator, r_min = rmin_summary$r_min, alpha = rmin_summary$alpha_mle, estimator = "restricted-domain MLE")
+  )
+  p_rmin <- ggplot2::ggplot(
+    rmin_long,
+    ggplot2::aes(x = r_min, y = alpha, linetype = generator, shape = generator)
+  ) +
+    ggplot2::geom_line(linewidth = 0.75) +
+    ggplot2::geom_point(size = 1.8) +
+    ggplot2::geom_hline(yintercept = 1, linetype = 3) +
+    ggplot2::facet_wrap(~ estimator, ncol = 1, scales = "free_y") +
+    ggplot2::scale_x_log10(breaks = sort(unique(rmin_long$r_min))) +
+    ggplot2::labs(x = expression(r[min]), y = expression(mean(hat(alpha))), linetype = NULL, shape = NULL) +
+    ggplot2::theme_minimal(base_size = 11) +
+    ggplot2::theme(legend.position = "bottom")
+  print(p_rmin)
+} else {
+  knitr::include_graphics("figures/precomputed/fig_alpha_rmin_sensitivity_v060.png")
+}
+```
+
+# Robustness of the sequence diagnostics
+
+## Alphabet collapse
+
+The excess-NMI calculation is repeated for $K\in\{25,50,100\}$. The ordering is stable over these choices: i.i.d. and latent mixture remain near zero, Markov lies around 0.18--0.20, and SSR remains higher at roughly 0.32--0.38.
+
+```{r}
+#| label: fig-nmi-topk
+#| fig-cap: "Excess lag-1 NMI under three alphabet-collapse choices."
 #| fig-width: 8
 #| fig-height: 5
-p_nmi_k <- plot_nmi_sensitivity(nmi_topk)
-p_nmi_k
-ggplot2::ggsave("figures/fig_nmi_topk_sensitivity_v051.pdf", p_nmi_k, width = 8, height = 5)
-```
-
-# 7. Joint matching on $(\widehat\alpha,V_n)$
-
-The robustness benchmark explicitly targets
-
-$$
-(\widehat\alpha_{\mathrm{OLS}},V_n)\approx(1,5000)
-$$
-
-using only these two marginal summaries. The relevant question is whether diagnostics **not used in calibration** continue to distinguish the constructions.
-
-```{r}
-#| label: joint-summary-table
-joint_summary <- diagnostic_summary_table(rep_joint)
-get_joint <- function(g, v, field = "mean") {
-  x <- joint_summary[joint_summary$generator == g & joint_summary$diagnostic == v, field]
-  if (!length(x)) NA_real_ else x[1L]
+if (live) {
+  p_nmi <- plot_nmi_sensitivity(nmi_topk)
+  print(p_nmi)
+} else {
+  knitr::include_graphics("figures/precomputed/fig_nmi_topk_sensitivity_v060.png")
 }
-joint_gens <- unique(rep_joint$generator)
-joint_wide <- data.frame(
-  Construction = joint_gens,
-  `OLS alpha` = vapply(joint_gens, function(g) fmt_mean_sd(get_joint(g, "alpha"), get_joint(g, "alpha", "sd")), character(1)),
-  `Final V` = vapply(joint_gens, function(g) fmt_mean_sd(get_joint(g, "vocabulary"), get_joint(g, "vocabulary", "sd"), digits = 1L), character(1)),
-  `Excess NMI` = vapply(joint_gens, function(g) fmt_mean_sd(get_joint(g, "transition_nmi_excess"), get_joint(g, "transition_nmi_excess", "sd")), character(1)),
-  `Direction D` = vapply(joint_gens, function(g) fmt_mean_sd(get_joint(g, "transition_toward_more_frequent"), get_joint(g, "transition_toward_more_frequent", "sd")), character(1)),
-  check.names = FALSE,
-  stringsAsFactors = FALSE
-)
-save_table(
-  joint_wide,
-  "table_joint_matching_v051",
-  caption = "Held-out diagnostics after joint calibration on the OLS exponent and final vocabulary size."
-)
 ```
 
-```{r}
-#| label: fig-joint-robustness-v051
-#| fig-cap: "Jointly matching the marginal exponent and final vocabulary removes a trivial marginal discriminator while leaving order-sensitive structure visible."
-#| fig-width: 12
-#| fig-height: 5.5
-p_joint_robust <- plot_joint_sequence_robustness(rep_joint)
-p_joint_robust
-ggplot2::ggsave("figures/fig_joint_matching_sequence_v051.pdf", p_joint_robust, width = 12, height = 5.5)
-```
+## SSR sequence boundaries
 
-# 8. Observation-window dependence and Zipf mimicry
-
-The compatible/mimicking benchmark is not forced into the strict equivalence class. Instead it tests whether the fitted exponent itself changes materially with the analyst's rank window.
+The primary SSR analysis excludes restart transitions because `sequence_id` marks natural cycles. To assess the dependence on this choice, the same realizations are relabelled into fixed blocks of 250 tokens. Excess NMI changes only slightly, from 0.350 to 0.358 on average. Direction falls from 0.946 to 0.842 because restart transitions can now occur inside an observational block. The qualitative asymmetry remains under both boundary definitions.
 
 ```{r}
-#| label: observation-window-data
-strict_sens <- utils::read.csv("results/alpha_sensitivity_strict_replications.csv", stringsAsFactors = FALSE)
-mimic_sens <- utils::read.csv("results/alpha_sensitivity_mimicking_replications.csv", stringsAsFactors = FALSE)
-alpha_sens_all <- rbind(strict_sens, mimic_sens)
-alpha_window_summary <- summarise_alpha_sensitivity_replications(alpha_sens_all)
-utils::write.csv(
-  alpha_window_summary,
-  "tables/table_alpha_window_summary_v051.csv",
-  row.names = FALSE
-)
-```
-
-```{r}
-#| label: fig-window-v051
-#| fig-cap: "The fitted Zipf exponent can depend strongly on the requested rank window; open points denote windows truncated by the minimum-count rule."
-#| fig-width: 9
-#| fig-height: 5.5
-p_window <- plot_alpha_sensitivity(alpha_sens_all, primary_r_max = 500L)
-p_window
-ggplot2::ggsave("figures/fig_alpha_window_sensitivity_v051.pdf", p_window, width = 9, height = 5.5)
-```
-
-# 9. Latent conditioning
-
-The latent mixture is not identified by temporal diagnostics because it is exchangeable within sequence. Its informative diagnostic is instead **conditioning**: the pooled marginal may scale while scale-conditioned rank distributions do not.
-
-```{r}
-#| label: fig-latent-conditioning-v051
-#| fig-cap: "Pooling across latent scales can create marginal scaling absent within scale-conditioned regimes."
-#| fig-width: 7.5
+#| label: fig-ssr-boundaries
+#| fig-cap: "SSR diagnostics under natural cycles and fixed 250-token blocks."
+#| fig-width: 8
 #| fig-height: 5
-p_latent <- plot_latent_conditioning(sims_strict$latent)
-p_latent
-ggplot2::ggsave("figures/fig_latent_conditioning_v051.pdf", p_latent, width = 7.5, height = 5)
+if (live) {
+  ssr_long <- rbind(
+    data.frame(statistic = "Excess NMI", boundary = "natural cycles", value = ssr_boundary$transition_nmi_excess_natural),
+    data.frame(statistic = "Excess NMI", boundary = "fixed blocks", value = ssr_boundary$transition_nmi_excess_fixed),
+    data.frame(statistic = "Direction D", boundary = "natural cycles", value = ssr_boundary$D_natural),
+    data.frame(statistic = "Direction D", boundary = "fixed blocks", value = ssr_boundary$D_fixed)
+  )
+  p_ssr <- ggplot2::ggplot(ssr_long, ggplot2::aes(x = boundary, y = value)) +
+    ggplot2::geom_boxplot(outlier.shape = NA) +
+    ggplot2::facet_wrap(~ statistic, scales = "free_y") +
+    ggplot2::labs(x = NULL, y = NULL) +
+    ggplot2::theme_minimal(base_size = 11)
+  print(p_ssr)
+} else {
+  knitr::include_graphics("figures/precomputed/fig_ssr_boundary_sensitivity_v060.png")
+}
 ```
 
-# 10. Outputs for the paper
+# Calibration
 
-The main paper-facing outputs produced by this notebook are:
+The exact-Zipf i.i.d., Markov and SSR constructions are fixed analytically. Calibration is reserved for the latent mixture and for the random-segmentation and Simon controls used in the observation-window exercise. Calibration seeds begin at 1001. The primary held-out benchmark begins at seed 2001. No held-out sequence diagnostic is used to select a model parameter.
+
+The latent range is chosen in two stages: a coarse search followed by a 50-seed final panel. Candidates are ranked by the absolute deviation of the mean OLS exponent from one, with RMSE and Monte Carlo standard deviation used as tie-breakers.
+
+```{r}
+#| label: calibration-table
+if (live) {
+  cal_display <- utils::read.csv("results/calibration_exponent_summary.csv", stringsAsFactors = FALSE)
+} else {
+  cal_display <- precomputed("calibration_summary.csv")
+}
+show_table(cal_display, "Calibration summaries for the tunable constructions.", digits = 3L)
+```
+
+# What this benchmark does and does not identify
+
+The controlled comparison establishes four distinct facts.
+
+1. **Marginal equivalence can be exact.** The i.i.d., Markov and SSR processes share $p_j=(jH_V)^{-1}$ without numerical tuning.
+2. **A fitted marginal statistic can still differ in finite samples.** Markov dependence changes the sampling distribution of $\widehat\alpha$ despite leaving the stationary marginal unchanged.
+3. **Order supplies information discarded by the rank distribution.** $I_{\rm excess}$ separates exchangeable from sequential processes in the benchmark; $D$ then separates reversible persistence from the directional contraction built into canonical SSR.
+4. **A similar marginal can arise by aggregation.** In the latent mixture, conditioning on scale exposes non-Zipf conditional structure hidden by pooling.
+
+These statements are about the specified generators and observation designs. They do not imply that $I_{\rm excess}$ or $D$ uniquely identifies a mechanism in empirical communication data, or that conditioning must weaken Zipf scaling in other systems. The animal-communication discussion in the paper treats these diagnostics as prospective contrasts, not as an empirical reanalysis.
+
+# Files generated by a full run
 
 ```text
-TABLES
-  tables/table_calibration_exponent_v051.{csv,tex}
-  tables/table_calibration_joint_v051.{csv,tex}
-  tables/table_heldout_strict_v051.{csv,tex}
-  tables/table_auc_bootstrap_key_v051.{csv,tex}
-  tables/table_nmi_sensitivity_v051.{csv,tex}
-  tables/table_joint_matching_v051.{csv,tex}
+results/
+  benchmark_strict_replications.{csv,rds}
+  benchmark_mimicking_replications.{csv,rds}
+  diagnostic_pairwise_auc_bootstrap_strict.csv
+  nmi_topk_sensitivity_strict.csv
+  alpha_sensitivity_strict_replications.csv
+  alpha_sensitivity_mimicking_replications.csv
+  alpha_rmin_sensitivity_strict.csv
+  markov_rho_sensitivity.csv
+  ssr_boundary_sensitivity.csv
+  calibration_exponent.rds
+  calibration_exponent_summary.csv
+  strict_alpha_status.csv
 
-FIGURES
-  figures/fig_rank_frequency_v051.pdf
-  figures/fig_alpha_estimator_robustness_v051.pdf
-  figures/fig_sequence_identification_v051.pdf
-  figures/fig_bootstrap_key_diagnostics_v051.pdf
-  figures/fig_nmi_topk_sensitivity_v051.pdf
-  figures/fig_joint_matching_sequence_v051.pdf
-  figures/fig_alpha_window_sensitivity_v051.pdf
-  figures/fig_latent_conditioning_v051.pdf
+figures/
+  fig_rank_frequency_v060.pdf
+  fig_alpha_estimator_robustness_v060.pdf
+  fig_sequence_identification_v060.pdf
+  fig_bootstrap_key_diagnostics_v060.pdf
+  fig_markov_neff_v060.pdf
+  fig_alpha_rmax_sensitivity_v060.pdf
+  fig_alpha_rmin_sensitivity_v060.pdf
+  fig_nmi_topk_sensitivity_v060.pdf
+  fig_ssr_boundary_sensitivity_v060.pdf
+  fig_latent_conditioning_v060.pdf
 ```
 
-The benchmark supports a deliberately limited inferential claim: a fitted Zipf exponent can leave very different constructions observationally difficult to distinguish under one marginal summary, while conditioning, vocabulary accumulation, and temporal diagnostics can progressively separate them. The Markov control is essential because it prevents generic serial dependence from being mistaken for an SSR-specific signature.
+# Computational environment
 
 ```{r}
 #| label: session-info
-session_text <- capture.output(sessionInfo())
-writeLines(session_text, "results/sessionInfo.txt")
-sessionInfo()
+if (live) {
+  sessionInfo()
+} else {
+  cat("The online/precomputed render does not rerun the R pipeline.\n")
+  cat("Use analysis_mode: results or analysis_mode: recompute to print the local sessionInfo().\n")
+}
 ```
+
+# References

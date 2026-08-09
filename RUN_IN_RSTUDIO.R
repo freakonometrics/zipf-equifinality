@@ -1,5 +1,5 @@
-# v0.5.1 — run the paper analysis directly from the RStudio console.
-# No terminal or Anaconda is required.
+# Full analysis for the Beyond Zipf's Law reproducibility companion.
+# No terminal is required: source this file from the repository root in RStudio.
 
 source("R/generators.R")
 source("R/diagnostics.R")
@@ -7,9 +7,11 @@ source("R/calibration.R")
 source("R/figures.R")
 source("R/run_all.R")
 
-# Full paper analysis:
+# Optional short check:
+# run_smoke_test()
+
+# Full calibration, held-out benchmark and robustness analyses:
 run_paper_analysis()
 
-# Then open index.qmd and click Render. Because results now exist, the QMD will
-# regenerate tables and figures without rerunning the simulations unless
-# force_rerun: true is set in the YAML header.
+# Then render index.qmd with analysis_mode: "results" to rebuild the HTML page
+# from the raw simulation outputs without rerunning the Monte Carlo study.

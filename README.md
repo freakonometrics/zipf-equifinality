@@ -1,41 +1,57 @@
-# Beyond Zipf's Law — reproducible benchmark v0.5.1
+# Beyond Zipf's Law — reproducibility companion
 
-This repository is the reproducibility companion for the working JRSI paper on
-Zipf-law equifinality and mechanistic inference.
+This repository contains the computational companion to **Beyond Zipf's Law: Equifinality and Mechanistic Inference from Scaling Laws**.
 
-## What changed in v0.5.1
+The landing page is `index.qmd`. It is designed both as a readable HTML companion and as an executable record of the simulations.
 
-The benchmark architecture is unchanged from v0.5. The only calibration change
-is prespecified: the latent-mixture parameter is selected on a 50-seed
-calibration panel rather than 10 seeds, while held-out evaluation remains on
-seeds 2001 onward. This addresses the larger Monte Carlo variability of the
-latent generator without using held-out results for tuning.
+## Render the online companion
 
-The notebook also produces paper-ready tables and figures for:
+The default mode uses the paper-facing precomputed outputs bundled with the repository:
 
-- OLS versus conditional-MLE exponent estimates;
-- a non-SSR stationary Zipf Markov control;
-- bootstrap AUC / signed rank-effect uncertainty;
-- joint matching on `(alpha, V_n)`;
-- excess-NMI sensitivity for `K = 25, 50, 100`;
-- observation-window sensitivity and latent conditioning.
+```bash
+quarto render
+```
 
-## RStudio: one-click route
+The website is written to `docs/`, which can be published directly with GitHub Pages.
 
-Open `index.qmd` and click **Render**.
+## Rebuild from existing simulation outputs
 
-On a fresh repository, the default YAML settings run the full analysis because
-required result files are absent. Later renders reuse `results/` and only
-rebuild the notebook, tables and figures. To force a complete rerun, set
-`force_rerun: true` for one render.
+If `results/` already contains a full run, change the YAML parameter in `index.qmd` to:
 
-Alternatively, from the RStudio console:
+```yaml
+analysis_mode: "results"
+```
+
+and render again. Figures and tables are then rebuilt from the raw outputs.
+
+## Rerun the full analysis
+
+Set:
+
+```yaml
+analysis_mode: "recompute"
+```
+
+and render `index.qmd`. For a short smoke test, also set `quick: true`.
+
+Alternatively, from RStudio:
 
 ```r
 source("RUN_IN_RSTUDIO.R")
 ```
 
-and then Render `index.qmd`.
+then render `index.qmd`.
+
+## Main design
+
+The primary benchmark compares:
+
+- i.i.d. finite Zipf sampling;
+- a sticky Markov process with the same stationary finite-Zipf marginal;
+- canonical sample-space reduction (SSR), also with the same stationary finite-Zipf marginal;
+- a latent-scale mixture that obtains a similar marginal through pooling.
+
+Random segmentation and Simon reinforcement are used separately for observation-window sensitivity.
 
 ## Required R packages
 
@@ -43,10 +59,4 @@ and then Render `index.qmd`.
 - patchwork
 - knitr
 
-No terminal workflow is required.
-
-## Main outputs
-
-Paper-facing tables are written to `tables/` as both CSV and LaTeX fragments.
-Paper-facing figures are written to `figures/` as PDFs. Raw calibration and
-held-out outputs are written to `results/`.
+The simulation source is under `R/`. Precomputed website assets are stored under `figures/precomputed/` and `tables/precomputed/` so the public companion can be rendered without rerunning the Monte Carlo study.

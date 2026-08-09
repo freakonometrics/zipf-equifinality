@@ -1,0 +1,4 @@
+model,stage,n_calibration_seeds,mean_alpha,sd_alpha,abs_alpha_bias,alpha_rmse,mean_vocabulary,sd_vocabulary
+random segmentation,coarse,10,1.001,0.007,0.001,0.007,12205.7,132.07
+Simon reinforcement,coarse,10,0.998,0.064,0.002,0.061,4488.6,51.123
+latent mixture,50-seed final,50,1.001,0.033,0.001,0.033,4739.3,64.066

@@ -1,0 +1,5 @@
+generator,K25,K50,K100
+finite Zipf reference,0,0,0
+latent mixture,0,0,0
+sample-space reduction,0.378,0.35,0.319
+Zipf Markov control,0.176,0.188,0.198

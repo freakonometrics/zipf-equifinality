@@ -1,6 +1,6 @@
 # Diagnostics for separating Zipf-equivalent generators.
-# v0.5 adds:
-#   - a conditional discrete-likelihood estimate of the Zipf exponent on the
+# v0.6 retains:
+#   - a restricted-domain discrete-likelihood estimate of the Zipf exponent on the
 #     same prespecified rank window used by the descriptive OLS slope;
 #   - a non-SSR Markov control diagnostic path;
 #   - bootstrap uncertainty for pairwise AUC/rank-effect separation;
@@ -62,7 +62,7 @@ zipf_mle_summary <- function(
   N <- sum(counts)
   sum_log_r <- sum(counts * log(r))
 
-  # Conditional multinomial likelihood on exactly the same empirical rank
+  # Restricted-domain multinomial likelihood on exactly the same empirical rank
   # window as the OLS summary: q_r(alpha) propto r^{-alpha}.  This is a
   # robustness estimator for the rank-frequency exponent, not a claim that
   # the full distribution has passed a power-law goodness-of-fit test.

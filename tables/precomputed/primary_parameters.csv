@@ -1,0 +1,5 @@
+Construction,Status,Parameters
+finite Zipf reference,fixed,V=5000; alpha=1; block length=250
+Zipf Markov control,fixed,V=5000; alpha=1; rho=0.35; block length=250
+sample-space reduction,fixed,V=5000; stationary start; uniform restart
+latent mixture,calibrated,"400 sequences x 250; V=5000; scale log-uniform on [0.5, 8500]"

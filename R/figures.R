@@ -39,7 +39,7 @@ plot_alpha_estimator_comparison <- function(results) {
   }
   d <- rbind(
     data.frame(generator = results$generator, estimator = "OLS log-log", alpha = results$alpha),
-    data.frame(generator = results$generator, estimator = "conditional MLE", alpha = results$alpha_mle)
+    data.frame(generator = results$generator, estimator = "restricted-domain MLE", alpha = results$alpha_mle)
   )
   d <- d[is.finite(d$alpha), , drop = FALSE]
 
@@ -51,7 +51,7 @@ plot_alpha_estimator_comparison <- function(results) {
     ggplot2::coord_flip() +
     ggplot2::labs(
       x = NULL, y = expression(hat(alpha)), linetype = NULL,
-      title = "Equifinality is checked with both OLS and conditional likelihood"
+      title = "Equifinality is checked with both OLS and restricted-domain likelihood"
     ) +
     ggplot2::theme_minimal(base_size = 11) +
     ggplot2::theme(legend.position = "bottom")

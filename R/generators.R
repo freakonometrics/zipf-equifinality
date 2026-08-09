@@ -203,13 +203,26 @@ simulate_latent_mixture <- function(
 simulate_ssr <- function(
     n_tokens = 100000L,
     vocabulary_size = 5000L,
+    initial_distribution = c("stationary", "uniform_restart"),
     seed = NULL) {
   if (!is.null(seed)) set.seed(seed)
   stopifnot(vocabulary_size >= 2L)
+  initial_distribution <- match.arg(initial_distribution)
+
+  # Canonical SSR transition rule:
+  #   i > 1: X_{t+1} ~ Uniform{1,...,i-1}
+  #   i = 1: X_{t+1} ~ Uniform{1,...,V}
+  # Its stationary distribution is exactly pi_j = 1/(j H_V).
+  if (initial_distribution == "stationary") {
+    p <- 1 / seq_len(vocabulary_size)
+    p <- p / sum(p)
+    current <- sample.int(vocabulary_size, size = 1L, prob = p)
+  } else {
+    current <- sample.int(vocabulary_size, size = 1L)
+  }
 
   state <- integer(n_tokens)
   sequence_id <- integer(n_tokens)
-  current <- sample.int(vocabulary_size, size = 1L)
   seq_id <- 1L
 
   for (t in seq_len(n_tokens)) {
@@ -217,11 +230,12 @@ simulate_ssr <- function(
     sequence_id[t] <- seq_id
 
     if (current <= 1L) {
-      # Canonical restart: choose a new point from the full sample space.
+      # Canonical restart from the full sample space. sequence_id marks
+      # natural SSR cycles so restart transitions can be excluded explicitly
+      # from within-sequence diagnostics when desired.
       seq_id <- seq_id + 1L
       current <- sample.int(vocabulary_size, size = 1L)
     } else {
-      # History-dependent sample-space reduction.
       current <- sample.int(current - 1L, size = 1L)
     }
   }
