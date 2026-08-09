@@ -1,0 +1,1 @@
+Sitemap: https://freakonometrics.github.io/zipf-equifinality/sitemap.xml
