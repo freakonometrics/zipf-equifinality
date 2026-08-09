@@ -1,0 +1,15 @@
+\begin{table}
+
+\caption{\label{tab:calibration-tables}Exponent-only calibration. The latent-mixture final parameter is selected on the enlarged calibration panel.}
+\centering
+\begin{tabular}[t]{llrrrrrrrrrll}
+\toprule
+model & stage & n\_calibration\_seeds & mean\_alpha & sd\_alpha & abs\_alpha\_bias & alpha\_rmse & mean\_vocabulary & sd\_vocabulary & loss & relative\_vocabulary\_error & within\_alpha\_tolerance & within\_vocabulary\_tolerance\\
+\midrule
+random & coarse & 10 & 1.001 & 0.007 & 0.001 & 0.007 & 12205.7 & 132.070 & 0.003 & 1.441 & TRUE & FALSE\\
+simon & coarse & 10 & 0.998 & 0.064 & 0.002 & 0.061 & 4488.6 & 51.123 & 0.009 & 0.102 & TRUE & FALSE\\
+ssr & refined & 10 & 0.991 & 0.003 & 0.009 & 0.009 & 5016.8 & 11.322 & 0.123 & 0.003 & TRUE & TRUE\\
+latent & 50-seed-final & 50 & 1.001 & 0.033 & 0.001 & 0.033 & 4739.3 & 64.066 & 0.002 & 0.052 & TRUE & FALSE\\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -1,0 +1,43 @@
+"pair","diagnostic","auc","rank_effect","separation","rank_effect_lower","rank_effect_upper","ci_contains_zero","n_x","n_y","n_boot","conf_level"
+"finite Zipf reference vs Zipf Markov control","alpha",0.8344,0.6688,0.6688,0.5568,0.7738,FALSE,100,100,2000,0.95
+"finite Zipf reference vs Zipf Markov control","alpha_mle",0.8088,0.6176,0.6176,0.4856,0.743921666666667,FALSE,100,100,2000,0.95
+"finite Zipf reference vs Zipf Markov control","vocabulary",0.3897,-0.2206,0.2206,-0.369263333333333,-0.0530075,FALSE,100,100,2000,0.95
+"finite Zipf reference vs Zipf Markov control","heaps_beta",0,-1,1,-1,-1,FALSE,100,100,2000,0.95
+"finite Zipf reference vs Zipf Markov control","heaps_beta_change",0.0121,-0.9758,0.9758,-0.9988,-0.945936666666667,FALSE,100,100,2000,0.95
+"finite Zipf reference vs Zipf Markov control","transition_toward_more_frequent",0.5245,0.0489999999999999,0.0489999999999999,-0.109,0.217731666666667,TRUE,100,100,2000,0.95
+"finite Zipf reference vs Zipf Markov control","transition_nmi_excess",0,-1,1,-1,-1,FALSE,100,100,2000,0.95
+"finite Zipf reference vs latent mixture","alpha",0.5117,0.0234000000000001,0.0234000000000001,-0.15799,0.212648333333333,TRUE,100,100,2000,0.95
+"finite Zipf reference vs latent mixture","alpha_mle",0.4885,-0.023,0.023,-0.207785,0.158853333333333,TRUE,100,100,2000,0.95
+"finite Zipf reference vs latent mixture","vocabulary",0.37155,-0.2569,0.2569,-0.426465833333333,-0.0822683333333334,FALSE,100,100,2000,0.95
+"finite Zipf reference vs latent mixture","heaps_beta",0.3587,-0.2826,0.2826,-0.464531666666667,-0.0898683333333333,FALSE,100,100,2000,0.95
+"finite Zipf reference vs latent mixture","heaps_beta_change",0.4878,-0.0244,0.0244,-0.2262,0.175463333333333,TRUE,100,100,2000,0.95
+"finite Zipf reference vs latent mixture","transition_toward_more_frequent",0.565,0.13,0.13,-0.0296533333333332,0.294931666666667,TRUE,100,100,2000,0.95
+"finite Zipf reference vs latent mixture","transition_nmi_excess",0.5356,0.0711999999999999,0.0711999999999999,-0.107663333333333,0.250126666666667,TRUE,100,100,2000,0.95
+"finite Zipf reference vs sample-space reduction","alpha",0.5057,0.0114000000000001,0.0114000000000001,-0.152131666666667,0.176063333333333,TRUE,100,100,2000,0.95
+"finite Zipf reference vs sample-space reduction","alpha_mle",0.4565,-0.087,0.087,-0.251131666666667,0.069395,TRUE,100,100,2000,0.95
+"finite Zipf reference vs sample-space reduction","vocabulary",0.494,-0.012,0.012,-0.1785875,0.149931666666667,TRUE,100,100,2000,0.95
+"finite Zipf reference vs sample-space reduction","heaps_beta",0.6042,0.2084,0.2084,0.0490683333333333,0.360131666666667,FALSE,100,100,2000,0.95
+"finite Zipf reference vs sample-space reduction","heaps_beta_change",0.5067,0.0134000000000001,0.0134000000000001,-0.146795,0.174926666666667,TRUE,100,100,2000,0.95
+"finite Zipf reference vs sample-space reduction","transition_toward_more_frequent",0,-1,1,-1,-1,FALSE,100,100,2000,0.95
+"finite Zipf reference vs sample-space reduction","transition_nmi_excess",0,-1,1,-1,-1,FALSE,100,100,2000,0.95
+"Zipf Markov control vs latent mixture","alpha",0.4337,-0.1326,0.1326,-0.319663333333333,0.04779,TRUE,100,100,2000,0.95
+"Zipf Markov control vs latent mixture","alpha_mle",0.4367,-0.1266,0.1266,-0.31719,0.0602,TRUE,100,100,2000,0.95
+"Zipf Markov control vs latent mixture","vocabulary",0.4121,-0.1758,0.1758,-0.346565833333333,-0.00553916666666667,FALSE,100,100,2000,0.95
+"Zipf Markov control vs latent mixture","heaps_beta",0.6375,0.275,0.275,0.0833999999999999,0.456531666666667,FALSE,100,100,2000,0.95
+"Zipf Markov control vs latent mixture","heaps_beta_change",0.601,0.202,0.202,0.0178783333333334,0.381331666666667,FALSE,100,100,2000,0.95
+"Zipf Markov control vs latent mixture","transition_toward_more_frequent",0.5378,0.0755999999999999,0.0755999999999999,-0.0910583333333333,0.235195,TRUE,100,100,2000,0.95
+"Zipf Markov control vs latent mixture","transition_nmi_excess",1,1,1,1,1,FALSE,100,100,2000,0.95
+"Zipf Markov control vs sample-space reduction","alpha",0.1635,-0.673,0.673,-0.776258333333333,-0.564468333333333,FALSE,100,100,2000,0.95
+"Zipf Markov control vs sample-space reduction","alpha_mle",0.1801,-0.6398,0.6398,-0.755731666666667,-0.512873333333333,FALSE,100,100,2000,0.95
+"Zipf Markov control vs sample-space reduction","vocabulary",0.6058,0.2116,0.2116,0.0495883333333334,0.364526666666667,FALSE,100,100,2000,0.95
+"Zipf Markov control vs sample-space reduction","heaps_beta",1,1,1,1,1,FALSE,100,100,2000,0.95
+"Zipf Markov control vs sample-space reduction","heaps_beta_change",0.9849,0.9698,0.9698,0.9378,0.992531666666667,FALSE,100,100,2000,0.95
+"Zipf Markov control vs sample-space reduction","transition_toward_more_frequent",0,-1,1,-1,-1,FALSE,100,100,2000,0.95
+"Zipf Markov control vs sample-space reduction","transition_nmi_excess",0,-1,1,-1,-1,FALSE,100,100,2000,0.95
+"latent mixture vs sample-space reduction","alpha",0.4872,-0.0256,0.0256,-0.218931666666667,0.156931666666667,TRUE,100,100,2000,0.95
+"latent mixture vs sample-space reduction","alpha_mle",0.5045,0.0089999999999999,0.0089999999999999,-0.179926666666667,0.195531666666667,TRUE,100,100,2000,0.95
+"latent mixture vs sample-space reduction","vocabulary",0.6282,0.2564,0.2564,0.0797933333333335,0.4293975,FALSE,100,100,2000,0.95
+"latent mixture vs sample-space reduction","heaps_beta",0.6473,0.2946,0.2946,0.107141666666667,0.47879,FALSE,100,100,2000,0.95
+"latent mixture vs sample-space reduction","heaps_beta_change",0.5087,0.0174000000000001,0.0174000000000001,-0.176263333333333,0.209926666666667,TRUE,100,100,2000,0.95
+"latent mixture vs sample-space reduction","transition_toward_more_frequent",0,-1,1,-1,-1,FALSE,100,100,2000,0.95
+"latent mixture vs sample-space reduction","transition_nmi_excess",0,-1,1,-1,-1,FALSE,100,100,2000,0.95
